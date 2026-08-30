@@ -216,6 +216,9 @@ function renderLibraries() {
     div.querySelector('[data-role="select-library"]').addEventListener("click", () => selectLibrary(lib.id));
     div.querySelector('[data-action="scan-library"]').addEventListener("click", (e) => {
       e.stopPropagation();
+      if (!confirm(`Scan library "${lib.name}"? This re-extracts chapters and mediainfo from every episode on disk and may take a while.`)) {
+        return;
+      }
       startJob(`/api/libraries/${lib.id}/scan`, () => selectLibrary(lib.id));
     });
     div.querySelector('[data-action="backup-library"]').addEventListener("click", (e) => {
