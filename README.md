@@ -57,8 +57,9 @@ Once running, open the web UI to:
   detectable from the filename or folder name).
 - Back up chapters and track metadata for a whole library, a show, or a
   single episode, via the "Backup" buttons at each level.
-- View stored chapter XML and a parsed track metadata table per episode by
-  clicking an episode row.
+- View stored chapters and track metadata per episode by clicking an episode
+  row — each toggles between a parsed table and the raw stored data
+  (chapter XML, or the complete mediainfo JSON report).
 - Restore chapters from the database back into the MKV files on disk, via
   the "Restore" buttons at each level.
 

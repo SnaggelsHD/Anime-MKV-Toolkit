@@ -28,34 +28,25 @@ def extract_chapters(path: str) -> str | None:
 
 
 def extract_track_metadata(path: str) -> str:
-    """Return a JSON string: array of track objects (track_id, track_type,
-    language, name, default, forced)."""
+    """Return the complete mediainfo report for the file as a JSON string."""
     try:
         proc = subprocess.run(
-            ["mkvmerge", "-J", path],
+            ["mediainfo", "--Output=JSON", path],
             capture_output=True,
             encoding="utf-8",
             timeout=TIMEOUT,
         )
     except FileNotFoundError as exc:
-        raise MkvToolError("mkvmerge is not installed") from exc
+        raise MkvToolError("mediainfo is not installed") from exc
 
     if proc.returncode != 0:
-        raise MkvToolError(f"mkvmerge failed: {proc.stderr.strip()}")
+        raise MkvToolError(f"mediainfo failed: {proc.stderr.strip()}")
 
-    info = json.loads(proc.stdout)
-    tracks = []
-    for track in info.get("tracks", []):
-        props = track.get("properties", {})
-        tracks.append(
-            {
-                "track_id": track.get("id"),
-                "track_type": track.get("type"),
-                "language": props.get("language"),
-                "name": props.get("track_name"),
-                "default": bool(props.get("default_track", False)),
-                "forced": bool(props.get("forced_track", False)),
-                "codec": track.get("codec"),
-            }
-        )
-    return json.dumps(tracks)
+    report = proc.stdout.strip()
+    if not report:
+        raise MkvToolError("mediainfo returned no output")
+    try:
+        json.loads(report)
+    except json.JSONDecodeError as exc:
+        raise MkvToolError(f"mediainfo returned invalid JSON: {exc}") from exc
+    return report

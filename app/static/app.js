@@ -362,6 +362,36 @@ function formatChapterTime(t) {
   return frac ? `${hms}.${frac.slice(0, 3)}` : hms;
 }
 
+const TRACK_TYPES = ["Video", "Audio", "Text"];
+
+function parseMediaInfoTracks(jsonString) {
+  try {
+    const parsed = JSON.parse(jsonString);
+    const allTracks = parsed?.media?.track || [];
+    return allTracks
+      .filter((t) => TRACK_TYPES.includes(t["@type"]))
+      .map((t) => ({
+        id: t.ID ?? t.StreamOrder ?? "",
+        type: t["@type"],
+        language: t.Language || "",
+        name: t.Title || "",
+        default: t.Default === "Yes",
+        forced: t.Forced === "Yes",
+        format: t.Format || "",
+      }));
+  } catch (_) {
+    return null;
+  }
+}
+
+function prettyPrintJson(jsonString) {
+  try {
+    return JSON.stringify(JSON.parse(jsonString), null, 2);
+  } catch (_) {
+    return jsonString;
+  }
+}
+
 async function openEpisodeDetail(episodeId) {
   const modalRoot = document.getElementById("modal-root");
   modalRoot.innerHTML = '<div class="modal-backdrop"><div class="modal">Loading...</div></div>';
@@ -374,32 +404,43 @@ async function openEpisodeDetail(episodeId) {
     return;
   }
 
-  let tracksHtml = '<p class="item-sub">No track metadata stored.</p>';
+  let trackSectionHtml;
   if (ep.track_metadata) {
-    try {
-      const tracks = JSON.parse(ep.track_metadata);
-      tracksHtml = `
+    const tracks = parseMediaInfoTracks(ep.track_metadata);
+    const tableRows = tracks && tracks.length
+      ? tracks
+          .map(
+            (t) => `<tr>
+              <td>${escapeHtml(String(t.id))}</td>
+              <td>${escapeHtml(t.type)}</td>
+              <td>${escapeHtml(t.language)}</td>
+              <td>${escapeHtml(t.name)}</td>
+              <td>${t.default ? "yes" : "no"}</td>
+              <td>${t.forced ? "yes" : "no"}</td>
+              <td>${escapeHtml(t.format)}</td>
+            </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="7" class="item-sub">Could not parse track metadata as a table.</td></tr>`;
+
+    trackSectionHtml = `
+      <div class="section-header">
+        <h2 style="margin-top:1rem;">Track Metadata</h2>
+        <div class="view-toggle">
+          <button type="button" class="active" data-tracks-toggle="table">Table</button>
+          <button type="button" data-tracks-toggle="file">File</button>
+        </div>
+      </div>
+      <div data-tracks-view="table">
         <table>
-          <thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Name</th><th>Default</th><th>Forced</th><th>Codec</th></tr></thead>
-          <tbody>
-            ${tracks
-              .map(
-                (t) => `<tr>
-                  <td>${t.track_id ?? ""}</td>
-                  <td>${escapeHtml(t.track_type || "")}</td>
-                  <td>${escapeHtml(t.language || "")}</td>
-                  <td>${escapeHtml(t.name || "")}</td>
-                  <td>${t.default ? "yes" : "no"}</td>
-                  <td>${t.forced ? "yes" : "no"}</td>
-                  <td>${escapeHtml(t.codec || "")}</td>
-                </tr>`
-              )
-              .join("")}
-          </tbody>
-        </table>`;
-    } catch (_) {
-      tracksHtml = "<p class=\"item-sub\">Could not parse stored track metadata.</p>";
-    }
+          <thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Name</th><th>Default</th><th>Forced</th><th>Format</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+      <div data-tracks-view="file" style="display:none;"><pre>${escapeHtml(prettyPrintJson(ep.track_metadata))}</pre></div>
+    `;
+  } else {
+    trackSectionHtml = '<h2 style="margin-top:1rem;">Track Metadata</h2><p class="item-sub">No track metadata stored.</p>';
   }
 
   let chaptersSectionHtml;
@@ -451,8 +492,7 @@ async function openEpisodeDetail(episodeId) {
           <button data-action="restore-episode">Restore chapters</button>
         </div>
         ${chaptersSectionHtml}
-        <h2 style="margin-top:1rem;">Track Metadata</h2>
-        ${tracksHtml}
+        ${trackSectionHtml}
       </div>
     </div>
   `;
@@ -466,6 +506,15 @@ async function openEpisodeDetail(episodeId) {
       modalRoot.querySelectorAll('[data-chapters-toggle]').forEach((b) => b.classList.toggle("active", b === btn));
       modalRoot.querySelectorAll('[data-chapters-view]').forEach((el) => {
         el.style.display = el.dataset.chaptersView === view ? "" : "none";
+      });
+    });
+  });
+  modalRoot.querySelectorAll('[data-tracks-toggle]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const view = btn.dataset.tracksToggle;
+      modalRoot.querySelectorAll('[data-tracks-toggle]').forEach((b) => b.classList.toggle("active", b === btn));
+      modalRoot.querySelectorAll('[data-tracks-view]').forEach((el) => {
+        el.style.display = el.dataset.tracksView === view ? "" : "none";
       });
     });
   });
