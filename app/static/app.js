@@ -266,7 +266,7 @@ function renderShowDetail() {
             </div>
           </div>
           <div class="item-actions">
-            <button data-action="scan-show" data-show-id="${show.id}">Scan</button>
+            <button data-action="scan-show" data-show-id="${show.id}">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
             <button class="primary" data-action="backup-show" data-show-id="${show.id}">Backup</button>
             <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
           </div>
@@ -290,6 +290,13 @@ function renderShowDetail() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
+      const show = state.shows.find((s) => s.id === id);
+      if (
+        show.scanned_count > 0 &&
+        !confirm(`Rescan all episodes in "${show.name}"? This re-extracts chapters and mediainfo from the files on disk, overwriting the current scan data. Backed-up data is not affected.`)
+      ) {
+        return;
+      }
       startJob(`/api/shows/${id}/scan`, () =>
         selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
       );
@@ -362,7 +369,7 @@ function renderEpisodes(showId, container) {
       <div class="season-heading-row">
         <span class="season-heading">${label} — ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up</span>
         <div class="item-actions">
-          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}">Scan</button>
+          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}">Backup</button>
         </div>
       </div>`;
@@ -385,6 +392,13 @@ function renderEpisodes(showId, container) {
   container.querySelectorAll('[data-action="scan-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      if (
+        Number(btn.dataset.scannedCount) > 0 &&
+        !confirm(`Rescan ${label}? This re-extracts chapters and mediainfo from the files on disk, overwriting the current scan data. Backed-up data is not affected.`)
+      ) {
+        return;
+      }
       startJob(`/api/shows/${showId}/season/scan${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
     })
   );
@@ -563,7 +577,7 @@ async function openEpisodeDetail(episodeId) {
         <p class="item-sub">${escapeHtml(ep.path)}</p>
         <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))}</p>
         <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
-          <button data-action="scan-episode">Scan</button>
+          <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>Backup this episode</button>
           <button data-action="restore-episode">Restore chapters</button>
         </div>
@@ -596,6 +610,9 @@ async function openEpisodeDetail(episodeId) {
   });
   modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
   modalRoot.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
+    if (hasScan && !confirm(`Rescan "${ep.filename}"? This re-extracts chapters and mediainfo from the file on disk, overwriting the current scan data. Backed-up data is not affected.`)) {
+      return;
+    }
     startJob(`/api/episodes/${episodeId}/scan`, () => {
       openEpisodeDetail(episodeId);
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
