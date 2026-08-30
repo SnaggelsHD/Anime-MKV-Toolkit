@@ -54,7 +54,7 @@ def restore_chapters_for_episode(scan_db: Session, backup_db: Session, episode: 
             f.write(chapter_xml)
 
         proc = subprocess.run(
-            ["mkvmerge", "-o", out_path, "--chapters", chapters_path, episode.path],
+            ["mkvmerge", "-o", out_path, "--no-chapters", "--chapters", chapters_path, episode.path],
             capture_output=True,
             encoding="utf-8",
             timeout=TIMEOUT,
