@@ -207,10 +207,10 @@ function renderLibraries() {
             <div class="item-sub">${lib.show_count} show(s)</div>
           </div>
         </div>
-      </div>
-      <div class="item-actions" style="margin-top:0.4rem;">
-        <button data-action="scan-library">Scan</button>
-        <button class="primary" data-action="backup-library">Backup</button>
+        <div class="item-actions">
+          <button data-action="scan-library">Scan</button>
+          <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
+        </div>
       </div>
     `;
     div.querySelector('[data-role="select-library"]').addEventListener("click", () => selectLibrary(lib.id));
@@ -220,6 +220,12 @@ function renderLibraries() {
     });
     div.querySelector('[data-action="backup-library"]').addEventListener("click", (e) => {
       e.stopPropagation();
+      if (
+        lib.backed_up_count > 0 &&
+        !confirm(`Re-backup all shows in "${lib.name}"? This overwrites the existing backup with the current scan data.`)
+      ) {
+        return;
+      }
       startJob(`/api/libraries/${lib.id}/backup`, () => selectLibrary(lib.id));
     });
     list.appendChild(div);
@@ -267,7 +273,7 @@ function renderShowDetail() {
           </div>
           <div class="item-actions">
             <button data-action="scan-show" data-show-id="${show.id}">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
-            <button class="primary" data-action="backup-show" data-show-id="${show.id}">Backup</button>
+            <button class="primary" data-action="backup-show" data-show-id="${show.id}">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
             <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
           </div>
         </div>
@@ -306,6 +312,13 @@ function renderShowDetail() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
+      const show = state.shows.find((s) => s.id === id);
+      if (
+        show.backed_up_count > 0 &&
+        !confirm(`Re-backup all episodes in "${show.name}"? This overwrites the existing backup with the current scan data.`)
+      ) {
+        return;
+      }
       startJob(`/api/shows/${id}/backup`, () =>
         selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
       );
@@ -370,7 +383,7 @@ function renderEpisodes(showId, container) {
         <span class="season-heading">${label} — ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up</span>
         <div class="item-actions">
           <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
-          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}">Backup</button>
+          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup" : "Backup"}</button>
         </div>
       </div>`;
     for (const ep of eps) {
@@ -405,6 +418,13 @@ function renderEpisodes(showId, container) {
   container.querySelectorAll('[data-action="backup-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      if (
+        Number(btn.dataset.backedUpCount) > 0 &&
+        !confirm(`Re-backup ${label}? This overwrites the existing backup with the current scan data.`)
+      ) {
+        return;
+      }
       startJob(`/api/shows/${showId}/season/backup${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
     })
   );
@@ -618,7 +638,7 @@ async function openEpisodeDetail(episodeId) {
         <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))}</p>
         <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
           <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
-          <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>Backup this episode</button>
+          <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
           <button data-action="restore-episode">Restore chapters</button>
         </div>
         <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
@@ -646,6 +666,9 @@ async function openEpisodeDetail(episodeId) {
     });
   });
   modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", () => {
+    if (ep.has_backup && !confirm(`Re-backup "${ep.filename}"? This overwrites the existing backup with the current scan data.`)) {
+      return;
+    }
     startJob(`/api/episodes/${episodeId}/backup`, () => {
       openEpisodeDetail(episodeId);
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);

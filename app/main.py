@@ -142,11 +142,13 @@ def health():
 
 
 @app.get("/api/libraries")
-def list_libraries(db: Session = Depends(get_db)):
+def list_libraries(db: Session = Depends(get_db), backup_db: Session = Depends(get_backup_db)):
     libraries = sync_libraries(db, LIBRARIES_ROOT)
     result = []
     for lib in libraries:
         shows = sync_shows(db, lib)
+        backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == lib.name).first()
+        backed_up_count = sum(len(bs.episodes) for bs in backup_lib.shows) if backup_lib else 0
         result.append(
             {
                 "id": lib.id,
@@ -154,6 +156,7 @@ def list_libraries(db: Session = Depends(get_db)):
                 "path": lib.path,
                 "missing": lib.missing,
                 "show_count": len(shows),
+                "backed_up_count": backed_up_count,
             }
         )
     return result
