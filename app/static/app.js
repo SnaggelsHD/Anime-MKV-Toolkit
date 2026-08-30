@@ -6,6 +6,42 @@ const state = {
   episodes: [],
 };
 
+function getStoredTheme() {
+  try {
+    return localStorage.getItem("theme");
+  } catch (_) {
+    return null;
+  }
+}
+
+function isDarkActive() {
+  const stored = getStoredTheme();
+  if (stored === "dark") return true;
+  if (stored === "light") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function applyTheme(theme) {
+  if (theme === "dark" || theme === "light") {
+    document.documentElement.setAttribute("data-theme", theme);
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}
+
+function initTheme() {
+  applyTheme(getStoredTheme());
+  const toggle = document.getElementById("theme-toggle");
+  toggle.checked = isDarkActive();
+  toggle.addEventListener("change", () => {
+    const next = toggle.checked ? "dark" : "light";
+    try {
+      localStorage.setItem("theme", next);
+    } catch (_) {}
+    applyTheme(next);
+  });
+}
+
 function toast(message, kind = "ok") {
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
@@ -201,6 +237,29 @@ function renderEpisodes(showId, container) {
   );
 }
 
+function parseChapterAtoms(xmlString) {
+  try {
+    const doc = new DOMParser().parseFromString(xmlString, "application/xml");
+    if (doc.querySelector("parsererror")) return [];
+    const atoms = Array.from(doc.getElementsByTagName("ChapterAtom"));
+    return atoms.map((atom, i) => {
+      const start = atom.getElementsByTagName("ChapterTimeStart")[0]?.textContent || "";
+      const end = atom.getElementsByTagName("ChapterTimeEnd")[0]?.textContent || "";
+      const display = atom.getElementsByTagName("ChapterDisplay")[0];
+      const title = display ? display.getElementsByTagName("ChapterString")[0]?.textContent || "" : "";
+      return { index: i + 1, title, start, end };
+    });
+  } catch (_) {
+    return [];
+  }
+}
+
+function formatChapterTime(t) {
+  if (!t) return "";
+  const [hms, frac] = t.split(".");
+  return frac ? `${hms}.${frac.slice(0, 3)}` : hms;
+}
+
 async function openEpisodeDetail(episodeId) {
   const modalRoot = document.getElementById("modal-root");
   modalRoot.innerHTML = '<div class="modal-backdrop"><div class="modal">Loading...</div></div>';
@@ -241,9 +300,41 @@ async function openEpisodeDetail(episodeId) {
     }
   }
 
-  const chaptersHtml = ep.chapters
-    ? `<pre>${escapeHtml(ep.chapters)}</pre>`
-    : '<p class="item-sub">No chapters stored.</p>';
+  let chaptersSectionHtml;
+  if (ep.chapters) {
+    const chapters = parseChapterAtoms(ep.chapters);
+    const tableRows = chapters.length
+      ? chapters
+          .map(
+            (c) => `<tr>
+              <td>${c.index}</td>
+              <td>${escapeHtml(c.title)}</td>
+              <td>${escapeHtml(formatChapterTime(c.start))}</td>
+              <td>${escapeHtml(formatChapterTime(c.end))}</td>
+            </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="4" class="item-sub">Could not parse chapters as a table.</td></tr>`;
+
+    chaptersSectionHtml = `
+      <div class="section-header">
+        <h2 style="margin-top:0;">Chapters</h2>
+        <div class="view-toggle">
+          <button type="button" class="active" data-chapters-toggle="xml">XML</button>
+          <button type="button" data-chapters-toggle="table">Table</button>
+        </div>
+      </div>
+      <div data-chapters-view="xml"><pre>${escapeHtml(ep.chapters)}</pre></div>
+      <div data-chapters-view="table" style="display:none;">
+        <table>
+          <thead><tr><th>#</th><th>Title</th><th>Start</th><th>End</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    chaptersSectionHtml = '<h2>Chapters</h2><p class="item-sub">No chapters stored.</p>';
+  }
 
   modalRoot.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
@@ -257,8 +348,7 @@ async function openEpisodeDetail(episodeId) {
           <button class="primary" data-action="backup-episode">Backup this episode</button>
           <button data-action="restore-episode">Restore chapters</button>
         </div>
-        <h2>Chapters</h2>
-        ${chaptersHtml}
+        ${chaptersSectionHtml}
         <h2 style="margin-top:1rem;">Track Metadata</h2>
         ${tracksHtml}
       </div>
@@ -267,6 +357,15 @@ async function openEpisodeDetail(episodeId) {
 
   document.getElementById("modal-backdrop").addEventListener("click", (e) => {
     if (e.target.id === "modal-backdrop") closeModal();
+  });
+  modalRoot.querySelectorAll('[data-chapters-toggle]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const view = btn.dataset.chaptersToggle;
+      modalRoot.querySelectorAll('[data-chapters-toggle]').forEach((b) => b.classList.toggle("active", b === btn));
+      modalRoot.querySelectorAll('[data-chapters-view]').forEach((el) => {
+        el.style.display = el.dataset.chaptersView === view ? "" : "none";
+      });
+    });
   });
   modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
   modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", async () => {
@@ -325,4 +424,5 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+initTheme();
 loadLibraries();

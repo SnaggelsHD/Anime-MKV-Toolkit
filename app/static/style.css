@@ -8,7 +8,36 @@
   --accent-hover: #2f58b5;
   --danger: #c0392b;
   --ok: #1e8e5a;
+  --code-bg: #f7f9fc;
   --radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161c;
+    --panel: #1d2028;
+    --border: #313644;
+    --text: #e7e9ee;
+    --muted: #9aa1af;
+    --accent: #5c8bef;
+    --accent-hover: #7ba0f2;
+    --danger: #e05c4b;
+    --ok: #3ecb85;
+    --code-bg: #171a21;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14161c;
+  --panel: #1d2028;
+  --border: #313644;
+  --text: #e7e9ee;
+  --muted: #9aa1af;
+  --accent: #5c8bef;
+  --accent-hover: #7ba0f2;
+  --danger: #e05c4b;
+  --ok: #3ecb85;
+  --code-bg: #171a21;
 }
 
 * { box-sizing: border-box; }
@@ -25,8 +54,47 @@ header {
   border-bottom: 1px solid var(--border);
   padding: 0.9rem 1.5rem;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 1rem;
+}
+
+.theme-switch {
+  margin-left: auto;
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.theme-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.theme-switch .slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s;
+}
+.theme-switch .slider::before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  top: 3px;
+  background: var(--panel);
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+.theme-switch input:checked + .slider {
+  background: var(--accent);
+}
+.theme-switch input:checked + .slider::before {
+  transform: translateX(18px);
 }
 
 header h1 {
@@ -159,7 +227,7 @@ table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 
 th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); }
 
 pre {
-  background: #f7f9fc;
+  background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.75rem;
@@ -170,11 +238,36 @@ pre {
   word-break: break-word;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+.section-header h2 { margin: 0; }
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.view-toggle button {
+  border: none;
+  border-radius: 0;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+}
+.view-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .toast {
   position: fixed;
   bottom: 1.2rem;
   right: 1.2rem;
-  background: var(--text);
+  background: #1f2430;
   color: #fff;
   padding: 0.6rem 1rem;
   border-radius: var(--radius);
