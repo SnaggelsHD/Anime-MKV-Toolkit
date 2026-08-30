@@ -2,16 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MKV Chapter & Media Info Backup</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; color: #222; }
-    h1 { font-size: 1.4rem; }
-    code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
-  </style>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <h1>MKV Chapter & Media Info Backup</h1>
-  <p>Backend is running. UI coming soon.</p>
-  <p>Check <code>/api/health</code> for status.</p>
+  <header>
+    <h1>MKV Chapter & Media Info Backup</h1>
+    <span id="status-line"></span>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Libraries</h2>
+      <div id="library-list">Loading...</div>
+    </section>
+    <section class="panel" id="show-detail">
+      <p id="show-detail-placeholder">Select a library to see its shows.</p>
+    </section>
+  </main>
+  <div id="modal-root"></div>
+  <script src="/app.js"></script>
 </body>
 </html>
