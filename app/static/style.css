@@ -233,36 +233,10 @@ button.danger {
 }
 button.danger:hover { background: var(--danger); color: #fff; }
 
-select {
-  font: inherit;
-  color: inherit;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
-}
-select:disabled { opacity: 0.6; }
-
 .settings-actions {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
-}
-
-.settings-clear-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-.settings-clear-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-  min-width: 170px;
 }
 
 .season-heading-row {

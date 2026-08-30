@@ -275,6 +275,7 @@ function renderShowDetail() {
             <button data-action="scan-show" data-show-id="${show.id}">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
             <button class="primary" data-action="backup-show" data-show-id="${show.id}">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
             <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
+            <button class="danger" data-action="clear-show" data-show-id="${show.id}">Clear</button>
           </div>
         </div>
         <div class="episodes-container" id="episodes-${show.id}"></div>
@@ -335,6 +336,24 @@ function renderShowDetail() {
       startJob(`/api/shows/${id}/restore`, () => selectLibrary(state.selectedLibraryId));
     })
   );
+  detail.querySelectorAll('[data-action="clear-show"]').forEach((btn) =>
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const id = Number(btn.dataset.showId);
+      const show = state.shows.find((s) => s.id === id);
+      if (!confirm(`Clear all backup data for "${show.name}"? This cannot be undone. Files on disk and the scan database are never touched.`)) {
+        return;
+      }
+      try {
+        await api(`/api/shows/${id}`, { method: "DELETE" });
+        toast(`Cleared backup for "${show.name}"`, "ok");
+        await selectLibrary(state.selectedLibraryId);
+        toggleShowEpisodes(id, true);
+      } catch (err) {
+        toast(`Failed to clear: ${err.message}`, "error");
+      }
+    })
+  );
 }
 
 async function toggleShowEpisodes(showId, forceReload = false) {
@@ -384,6 +403,7 @@ function renderEpisodes(showId, container) {
         <div class="item-actions">
           <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup" : "Backup"}</button>
+          <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear</button>
         </div>
       </div>`;
     for (const ep of eps) {
@@ -426,6 +446,23 @@ function renderEpisodes(showId, container) {
         return;
       }
       startJob(`/api/shows/${showId}/season/backup${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+    })
+  );
+  container.querySelectorAll('[data-action="clear-season"]').forEach((btn) =>
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      if (!confirm(`Clear backup data for ${label}? This cannot be undone. Files on disk and the scan database are never touched.`)) {
+        return;
+      }
+      try {
+        await api(`/api/shows/${showId}/season${seasonQuery(btn.dataset.season)}`, { method: "DELETE" });
+        toast(`Cleared backup for ${label}`, "ok");
+        await selectLibrary(state.selectedLibraryId);
+        toggleShowEpisodes(showId, true);
+      } catch (err) {
+        toast(`Failed to clear: ${err.message}`, "error");
+      }
     })
   );
 }
@@ -640,6 +677,7 @@ async function openEpisodeDetail(episodeId) {
           <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
           <button data-action="restore-episode">Restore chapters</button>
+          <button class="danger" data-action="clear-episode-backup">Clear Backup</button>
         </div>
         <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
           <button type="button" class="tab-btn active" data-toggle-group="episode-view" data-toggle-key="scan">Scanned Data</button>
@@ -680,6 +718,20 @@ async function openEpisodeDetail(episodeId) {
     }
     startJob(`/api/episodes/${episodeId}/restore`);
   });
+  modalRoot.querySelector('[data-action="clear-episode-backup"]').addEventListener("click", async () => {
+    if (!confirm(`Clear the backup for "${ep.filename}"? This cannot be undone. Files on disk and the scan database are never touched.`)) {
+      return;
+    }
+    try {
+      await api(`/api/episodes/${episodeId}`, { method: "DELETE" });
+      toast(`Cleared backup for "${ep.filename}"`, "ok");
+      await selectLibrary(state.selectedLibraryId);
+      openEpisodeDetail(episodeId);
+      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
+    } catch (err) {
+      toast(`Failed to clear: ${err.message}`, "error");
+    }
+  });
 }
 
 function closeModal() {
@@ -693,72 +745,11 @@ function initTabs() {
       buttons.forEach((b) => b.classList.toggle("active", b === btn));
       document.getElementById("view-library").style.display = btn.dataset.tab === "library" ? "" : "none";
       document.getElementById("view-settings").style.display = btn.dataset.tab === "settings" ? "" : "none";
-      if (btn.dataset.tab === "settings") populateClearLibraries();
     });
   });
 }
 
-let clearFormEpisodes = [];
-
-function resetSelect(select, placeholder, disabled) {
-  select.innerHTML = `<option value="">${placeholder}</option>`;
-  select.disabled = disabled;
-}
-
-async function populateClearLibraries() {
-  const libSelect = document.getElementById("clear-library");
-  const showSelect = document.getElementById("clear-show");
-  const seasonSelect = document.getElementById("clear-season");
-  const episodeSelect = document.getElementById("clear-episode");
-  const clearBtn = document.getElementById("clear-selected-btn");
-
-  resetSelect(showSelect, "Select a show…", true);
-  resetSelect(seasonSelect, "All seasons", true);
-  resetSelect(episodeSelect, "All episodes", true);
-  clearBtn.disabled = true;
-
-  const previousValue = libSelect.value;
-  libSelect.innerHTML = '<option value="">Select a library…</option>';
-  try {
-    const libraries = await api("/api/libraries");
-    for (const lib of libraries) {
-      const opt = document.createElement("option");
-      opt.value = lib.id;
-      opt.textContent = `${lib.name} (${lib.show_count} shows)`;
-      libSelect.appendChild(opt);
-    }
-    if (previousValue && libraries.some((l) => String(l.id) === previousValue)) {
-      libSelect.value = previousValue;
-    }
-  } catch (err) {
-    toast(`Failed to load libraries: ${err.message}`, "error");
-  }
-}
-
-function populateClearEpisodeOptions(seasonValue) {
-  const episodeSelect = document.getElementById("clear-episode");
-  let filtered;
-  if (seasonValue === "") filtered = clearFormEpisodes;
-  else if (seasonValue === UNSORTED_SEASON) filtered = clearFormEpisodes.filter((e) => !e.season);
-  else filtered = clearFormEpisodes.filter((e) => e.season === seasonValue);
-
-  episodeSelect.innerHTML = '<option value="">All episodes</option>';
-  for (const ep of filtered) {
-    const opt = document.createElement("option");
-    opt.value = ep.id;
-    opt.textContent = ep.filename;
-    episodeSelect.appendChild(opt);
-  }
-  episodeSelect.disabled = false;
-}
-
 function initSettingsTab() {
-  const libSelect = document.getElementById("clear-library");
-  const showSelect = document.getElementById("clear-show");
-  const seasonSelect = document.getElementById("clear-season");
-  const episodeSelect = document.getElementById("clear-episode");
-  const clearBtn = document.getElementById("clear-selected-btn");
-
   const refreshAfterGlobalOp = () => {
     loadLibraries();
     if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
@@ -800,97 +791,8 @@ function initSettingsTab() {
       toast("Database cleared", "ok");
       loadLibraries();
       if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
-      populateClearLibraries();
     } catch (err) {
       toast(`Failed to clear database: ${err.message}`, "error");
-    }
-  });
-
-  libSelect.addEventListener("change", async () => {
-    resetSelect(showSelect, "Select a show…", true);
-    resetSelect(seasonSelect, "All seasons", true);
-    resetSelect(episodeSelect, "All episodes", true);
-    clearFormEpisodes = [];
-    clearBtn.disabled = true;
-    if (!libSelect.value) return;
-    try {
-      const shows = await api(`/api/libraries/${libSelect.value}/shows`);
-      showSelect.innerHTML = '<option value="">Select a show…</option>';
-      for (const show of shows) {
-        const opt = document.createElement("option");
-        opt.value = show.id;
-        opt.textContent = `${show.name} (${show.episode_count} eps)`;
-        showSelect.appendChild(opt);
-      }
-      showSelect.disabled = false;
-    } catch (err) {
-      toast(`Failed to load shows: ${err.message}`, "error");
-    }
-  });
-
-  showSelect.addEventListener("change", async () => {
-    resetSelect(seasonSelect, "All seasons", true);
-    resetSelect(episodeSelect, "All episodes", true);
-    clearFormEpisodes = [];
-    if (!showSelect.value) {
-      clearBtn.disabled = true;
-      return;
-    }
-    clearBtn.disabled = false;
-    try {
-      clearFormEpisodes = await api(`/api/shows/${showSelect.value}/episodes`);
-      const seasons = Array.from(new Set(clearFormEpisodes.map((e) => e.season || UNSORTED_SEASON)));
-      seasonSelect.innerHTML = '<option value="">All seasons</option>';
-      for (const season of seasons) {
-        const opt = document.createElement("option");
-        opt.value = season;
-        opt.textContent = season === UNSORTED_SEASON ? "Unsorted" : `Season ${season}`;
-        seasonSelect.appendChild(opt);
-      }
-      seasonSelect.disabled = false;
-      populateClearEpisodeOptions("");
-    } catch (err) {
-      toast(`Failed to load episodes: ${err.message}`, "error");
-    }
-  });
-
-  seasonSelect.addEventListener("change", () => {
-    populateClearEpisodeOptions(seasonSelect.value);
-  });
-
-  clearBtn.addEventListener("click", async () => {
-    const showId = showSelect.value;
-    const showName = showSelect.options[showSelect.selectedIndex]?.textContent || "this show";
-    const seasonValue = seasonSelect.value;
-    const episodeId = episodeSelect.value;
-    const episodeName = episodeSelect.options[episodeSelect.selectedIndex]?.textContent || "";
-
-    let scopeLabel;
-    let request;
-    if (episodeId) {
-      scopeLabel = `episode "${episodeName}"`;
-      request = () => api(`/api/episodes/${episodeId}`, { method: "DELETE" });
-    } else if (seasonValue === UNSORTED_SEASON) {
-      scopeLabel = `unsorted episodes of "${showName}"`;
-      request = () => api(`/api/shows/${showId}/season`, { method: "DELETE" });
-    } else if (seasonValue !== "") {
-      scopeLabel = `Season ${seasonValue} of "${showName}"`;
-      request = () => api(`/api/shows/${showId}/season?season=${encodeURIComponent(seasonValue)}`, { method: "DELETE" });
-    } else {
-      scopeLabel = `show "${showName}"`;
-      request = () => api(`/api/shows/${showId}`, { method: "DELETE" });
-    }
-
-    if (!confirm(`Clear ${scopeLabel} from the database? This cannot be undone. Files on disk are never touched.`)) {
-      return;
-    }
-    try {
-      await request();
-      toast(`Cleared ${scopeLabel}`, "ok");
-      if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
-      libSelect.dispatchEvent(new Event("change"));
-    } catch (err) {
-      toast(`Failed to clear: ${err.message}`, "error");
     }
   });
 }

@@ -44,30 +44,6 @@
     </section>
 
     <section class="panel">
-      <h2>Clear From Backup Database</h2>
-      <p class="item-sub">
-        Removes stored chapters and track metadata from the <strong>backup database only</strong>.
-        The scan database (and its scanned chapters/mediainfo) is never touched, so you can
-        re-backup from it at any time. Files on disk are never touched either way.
-      </p>
-      <div class="settings-clear-form">
-        <label>Library
-          <select id="clear-library"><option value="">Select a library…</option></select>
-        </label>
-        <label>Show
-          <select id="clear-show" disabled><option value="">Select a show…</option></select>
-        </label>
-        <label>Season
-          <select id="clear-season" disabled><option value="">All seasons</option></select>
-        </label>
-        <label>Episode
-          <select id="clear-episode" disabled><option value="">All episodes</option></select>
-        </label>
-        <button type="button" class="danger" id="clear-selected-btn" disabled>Clear from database</button>
-      </div>
-    </section>
-
-    <section class="panel">
       <h2>Export</h2>
       <p class="item-sub">Download the backup database file (backup.db) for safekeeping.</p>
       <a class="button-link" id="export-backup-link" href="/api/backup/export" download="backup.db">Export backup database</a>
