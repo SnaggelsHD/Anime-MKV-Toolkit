@@ -6,6 +6,7 @@ from app.backup import backup_episode, backup_library, backup_show
 from app.config import DB_PATH, LIBRARIES_ROOT
 from app.db import get_db, init_db
 from app.models import Chapters, Episode, Library, Show, TrackMetadata
+from app.restore import restore_chapters_for_episode, restore_library, restore_show
 from app.scanner import sync_episodes, sync_libraries, sync_shows
 
 app = FastAPI(title="MKV Chapter & Media Info Backup")
@@ -118,6 +119,30 @@ def backup_episode_endpoint(episode_id: int, db: Session = Depends(get_db)):
     if episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
     return backup_episode(db, episode)
+
+
+@app.post("/api/episodes/{episode_id}/restore")
+def restore_episode_endpoint(episode_id: int, db: Session = Depends(get_db)):
+    episode = db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return restore_chapters_for_episode(db, episode)
+
+
+@app.post("/api/shows/{show_id}/restore")
+def restore_show_endpoint(show_id: int, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    return {"results": restore_show(db, show)}
+
+
+@app.post("/api/libraries/{library_id}/restore")
+def restore_library_endpoint(library_id: int, db: Session = Depends(get_db)):
+    library = db.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="Library not found")
+    return {"results": restore_library(db, library)}
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
