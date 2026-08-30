@@ -104,20 +104,8 @@ function renderLibraries() {
           </div>
         </div>
       </div>
-      <div class="item-actions" style="margin-top:0.4rem;">
-        <button class="primary" data-action="backup-library">Backup all shows</button>
-        <button data-action="restore-library">Restore all shows</button>
-      </div>
     `;
     div.querySelector('[data-role="select-library"]').addEventListener("click", () => selectLibrary(lib.id));
-    div.querySelector('[data-action="backup-library"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      runOperation(`/api/libraries/${lib.id}/backup`, `Backing up library "${lib.name}"...`);
-    });
-    div.querySelector('[data-action="restore-library"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      runOperation(`/api/libraries/${lib.id}/restore`, `Restoring library "${lib.name}"...`);
-    });
     list.appendChild(div);
   }
 }
@@ -194,6 +182,9 @@ function renderShowDetail() {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
       const show = state.shows.find((s) => s.id === id);
+      if (!confirm(`Restore chapters for all episodes in "${show.name}"? This overwrites the MKV files on disk with the stored chapters.`)) {
+        return;
+      }
       runOperation(`/api/shows/${id}/restore`, `Restoring "${show.name}"...`);
     })
   );
@@ -393,6 +384,9 @@ async function openEpisodeDetail(episodeId) {
     if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
   });
   modalRoot.querySelector('[data-action="restore-episode"]').addEventListener("click", async () => {
+    if (!confirm(`Restore chapters for "${ep.filename}"? This overwrites the file on disk with the stored chapters.`)) {
+      return;
+    }
     await runSingle(`/api/episodes/${episodeId}/restore`, "Restoring chapters...");
   });
 }
@@ -506,9 +500,19 @@ function initSettingsTab() {
   const clearBtn = document.getElementById("clear-selected-btn");
 
   document.getElementById("settings-backup-all").addEventListener("click", () => {
+    if (!confirm("Backup every library now? This may take a while depending on how large your libraries are.")) {
+      return;
+    }
     runOperation("/api/backup/all", "Backing up all libraries...", loadLibraries);
   });
   document.getElementById("settings-restore-all").addEventListener("click", () => {
+    if (
+      !confirm(
+        "Restore chapters for every episode in every library? This overwrites MKV files on disk with the stored chapters and may take a while."
+      )
+    ) {
+      return;
+    }
     runOperation("/api/restore/all", "Restoring all libraries...", loadLibraries);
   });
 
