@@ -55,14 +55,20 @@ def restore_chapters_for_episode(db: Session, episode: Episode) -> dict:
                 os.remove(p)
 
 
-def restore_show(db: Session, show: Show) -> list[dict]:
+def restore_show(db: Session, show: Show, on_result=None) -> list[dict]:
     episodes = sync_episodes(db, show)
-    return [restore_chapters_for_episode(db, ep) for ep in episodes]
+    results = []
+    for ep in episodes:
+        result = restore_chapters_for_episode(db, ep)
+        results.append(result)
+        if on_result:
+            on_result(result)
+    return results
 
 
-def restore_library(db: Session, library: Library) -> list[dict]:
+def restore_library(db: Session, library: Library, on_result=None) -> list[dict]:
     shows = sync_shows(db, library)
     results = []
     for show in shows:
-        results.extend(restore_show(db, show))
+        results.extend(restore_show(db, show, on_result=on_result))
     return results

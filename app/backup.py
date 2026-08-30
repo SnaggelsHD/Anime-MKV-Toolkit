@@ -45,14 +45,20 @@ def backup_episode(db: Session, episode: Episode) -> dict:
     }
 
 
-def backup_show(db: Session, show: Show) -> list[dict]:
+def backup_show(db: Session, show: Show, on_result=None) -> list[dict]:
     episodes = sync_episodes(db, show)
-    return [backup_episode(db, ep) for ep in episodes]
+    results = []
+    for ep in episodes:
+        result = backup_episode(db, ep)
+        results.append(result)
+        if on_result:
+            on_result(result)
+    return results
 
 
-def backup_library(db: Session, library: Library) -> list[dict]:
+def backup_library(db: Session, library: Library, on_result=None) -> list[dict]:
     shows = sync_shows(db, library)
     results = []
     for show in shows:
-        results.extend(backup_show(db, show))
+        results.extend(backup_show(db, show, on_result=on_result))
     return results

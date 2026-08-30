@@ -6,25 +6,33 @@ from app.backup import backup_library
 from app.config import LIBRARIES_ROOT
 from app.models import Chapters, Episode, Library, Show, TrackMetadata
 from app.restore import restore_library
-from app.scanner import sync_libraries
+from app.scanner import sync_episodes, sync_libraries, sync_shows
 
 logger = logging.getLogger("mkv_backup")
 
 
-def backup_all(db: Session) -> list[dict]:
+def backup_all(db: Session, on_result=None) -> list[dict]:
     libraries = sync_libraries(db, LIBRARIES_ROOT)
     results = []
     for library in libraries:
-        results.extend(backup_library(db, library))
+        results.extend(backup_library(db, library, on_result=on_result))
     return results
 
 
-def restore_all(db: Session) -> list[dict]:
+def restore_all(db: Session, on_result=None) -> list[dict]:
     libraries = sync_libraries(db, LIBRARIES_ROOT)
     results = []
     for library in libraries:
-        results.extend(restore_library(db, library))
+        results.extend(restore_library(db, library, on_result=on_result))
     return results
+
+
+def count_all_episodes(db: Session) -> int:
+    total = 0
+    for library in sync_libraries(db, LIBRARIES_ROOT):
+        for show in sync_shows(db, library):
+            total += len(sync_episodes(db, show))
+    return total
 
 
 def clear_database(db: Session) -> None:

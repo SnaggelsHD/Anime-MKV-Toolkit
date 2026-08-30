@@ -63,11 +63,102 @@ async function api(path, options) {
   return res.json();
 }
 
-function summarizeResults(results) {
-  const ok = results.filter((r) => r.ok).length;
-  const failed = results.length - ok;
-  if (failed === 0) return `${ok} episode(s) succeeded`;
-  return `${ok} succeeded, ${failed} failed`;
+const tasks = new Map();
+
+function renderTaskCard(job) {
+  const pct = job.total > 0 ? Math.min(100, Math.round((job.completed / job.total) * 100)) : 100;
+  let cardClass = "task-card";
+  let statusText;
+
+  if (job.status === "running") {
+    statusText = `${job.completed} / ${job.total}`;
+  } else if (job.status === "error") {
+    cardClass += " error";
+    statusText = `Error: ${job.error}`;
+  } else {
+    const ok = job.results.filter((r) => r.ok).length;
+    const failed = job.results.length - ok;
+    statusText = failed === 0 ? `${ok} succeeded` : `${ok} succeeded, ${failed} failed`;
+    if (failed > 0) cardClass += " has-failures";
+  }
+
+  return `
+    <div class="${cardClass}" data-job-id="${job.id}">
+      <div class="task-card-header">
+        <span class="task-card-label" title="${escapeHtml(job.label)}">${escapeHtml(job.label)}</span>
+        <button type="button" class="task-card-close" data-close-job="${job.id}" aria-label="Dismiss">×</button>
+      </div>
+      <div class="task-progress-track"><div class="task-progress-fill" style="width:${pct}%"></div></div>
+      <div class="task-card-status">${escapeHtml(statusText)}</div>
+    </div>
+  `;
+}
+
+function renderTaskQueue() {
+  const container = document.getElementById("task-queue");
+  container.innerHTML = Array.from(tasks.values())
+    .map((entry) => renderTaskCard(entry.job))
+    .join("");
+  container.querySelectorAll("[data-close-job]").forEach((btn) =>
+    btn.addEventListener("click", () => removeTask(btn.dataset.closeJob))
+  );
+}
+
+function removeTask(jobId) {
+  const entry = tasks.get(jobId);
+  if (entry?.intervalId) clearInterval(entry.intervalId);
+  tasks.delete(jobId);
+  renderTaskQueue();
+}
+
+function trackJob(jobId, onDone) {
+  const entry = { job: null, intervalId: null, onDone };
+  tasks.set(jobId, entry);
+
+  const poll = async () => {
+    let job;
+    try {
+      job = await api(`/api/jobs/${jobId}`);
+    } catch (_) {
+      clearInterval(entry.intervalId);
+      tasks.delete(jobId);
+      return;
+    }
+    entry.job = job;
+    renderTaskQueue();
+    if (job.status !== "running") {
+      clearInterval(entry.intervalId);
+      if (entry.onDone) entry.onDone(job);
+      setTimeout(() => removeTask(jobId), 8000);
+    }
+  };
+
+  entry.intervalId = setInterval(poll, 600);
+  poll();
+}
+
+async function startJob(path, onDone) {
+  let jobId;
+  try {
+    const res = await api(path, { method: "POST" });
+    jobId = res.job_id;
+  } catch (err) {
+    toast(`Failed to start operation: ${err.message}`, "error");
+    return;
+  }
+  trackJob(jobId, onDone);
+}
+
+async function resumeActiveJobs() {
+  let jobs;
+  try {
+    jobs = await api("/api/jobs");
+  } catch (_) {
+    return;
+  }
+  for (const job of jobs) {
+    if (job.status === "running") trackJob(job.id);
+  }
 }
 
 async function loadLibraries() {
@@ -173,8 +264,9 @@ function renderShowDetail() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
-      const show = state.shows.find((s) => s.id === id);
-      runOperation(`/api/shows/${id}/backup`, `Backing up "${show.name}"...`, () => toggleShowEpisodes(id, true));
+      startJob(`/api/shows/${id}/backup`, () =>
+        selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
+      );
     })
   );
   detail.querySelectorAll('[data-action="restore-show"]').forEach((btn) =>
@@ -185,7 +277,7 @@ function renderShowDetail() {
       if (!confirm(`Restore chapters for all episodes in "${show.name}"? This overwrites the MKV files on disk with the stored chapters.`)) {
         return;
       }
-      runOperation(`/api/shows/${id}/restore`, `Restoring "${show.name}"...`);
+      startJob(`/api/shows/${id}/restore`, () => selectLibrary(state.selectedLibraryId));
     })
   );
 }
@@ -378,51 +470,22 @@ async function openEpisodeDetail(episodeId) {
     });
   });
   modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
-  modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", async () => {
-    await runSingle(`/api/episodes/${episodeId}/backup`, "Backing up episode...");
-    openEpisodeDetail(episodeId);
-    if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
+  modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", () => {
+    startJob(`/api/episodes/${episodeId}/backup`, () => {
+      openEpisodeDetail(episodeId);
+      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
+    });
   });
-  modalRoot.querySelector('[data-action="restore-episode"]').addEventListener("click", async () => {
+  modalRoot.querySelector('[data-action="restore-episode"]').addEventListener("click", () => {
     if (!confirm(`Restore chapters for "${ep.filename}"? This overwrites the file on disk with the stored chapters.`)) {
       return;
     }
-    await runSingle(`/api/episodes/${episodeId}/restore`, "Restoring chapters...");
+    startJob(`/api/episodes/${episodeId}/restore`);
   });
 }
 
 function closeModal() {
   document.getElementById("modal-root").innerHTML = "";
-}
-
-async function runSingle(path, pendingMessage) {
-  setStatus(pendingMessage);
-  try {
-    const result = await api(path, { method: "POST" });
-    if (result.ok) {
-      toast(`${result.filename}: success`, "ok");
-    } else {
-      toast(`${result.filename}: ${result.error}`, "error");
-    }
-  } catch (err) {
-    toast(`Operation failed: ${err.message}`, "error");
-  } finally {
-    setStatus("");
-  }
-}
-
-async function runOperation(path, pendingMessage, onDone) {
-  setStatus(pendingMessage);
-  try {
-    const { results } = await api(path, { method: "POST" });
-    toast(summarizeResults(results), results.every((r) => r.ok) ? "ok" : "error");
-    if (state.selectedLibraryId) await selectLibrary(state.selectedLibraryId);
-    if (onDone) onDone();
-  } catch (err) {
-    toast(`Operation failed: ${err.message}`, "error");
-  } finally {
-    setStatus("");
-  }
 }
 
 function initTabs() {
@@ -499,11 +562,16 @@ function initSettingsTab() {
   const episodeSelect = document.getElementById("clear-episode");
   const clearBtn = document.getElementById("clear-selected-btn");
 
+  const refreshAfterGlobalOp = () => {
+    loadLibraries();
+    if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
+  };
+
   document.getElementById("settings-backup-all").addEventListener("click", () => {
     if (!confirm("Backup every library now? This may take a while depending on how large your libraries are.")) {
       return;
     }
-    runOperation("/api/backup/all", "Backing up all libraries...", loadLibraries);
+    startJob("/api/backup/all", refreshAfterGlobalOp);
   });
   document.getElementById("settings-restore-all").addEventListener("click", () => {
     if (
@@ -513,7 +581,7 @@ function initSettingsTab() {
     ) {
       return;
     }
-    runOperation("/api/restore/all", "Restoring all libraries...", loadLibraries);
+    startJob("/api/restore/all", refreshAfterGlobalOp);
   });
 
   document.getElementById("settings-clear-db").addEventListener("click", async () => {
@@ -624,10 +692,6 @@ function initSettingsTab() {
   });
 }
 
-function setStatus(text) {
-  document.getElementById("status-line").textContent = text;
-}
-
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -640,3 +704,4 @@ initTheme();
 initTabs();
 initSettingsTab();
 loadLibraries();
+resumeActiveJobs();
