@@ -25,12 +25,16 @@ def scan_episode(db: Session, episode: Episode) -> dict:
         logger.error("Scan failed for %s: %s", episode.path, exc)
         return {"episode_id": episode.id, "filename": episode.filename, "ok": False, "error": str(exc)}
 
+    chapters_row = db.query(Chapters).filter(Chapters.episode_id == episode.id).first()
     if chapter_xml is not None:
-        chapters_row = db.query(Chapters).filter(Chapters.episode_id == episode.id).first()
         if chapters_row is None:
             db.add(Chapters(episode_id=episode.id, chapter_xml=chapter_xml))
         else:
             chapters_row.chapter_xml = chapter_xml
+    elif chapters_row is not None:
+        # The file no longer has chapters (e.g. re-downloaded without them);
+        # drop the stale scan data instead of leaving the old chapters behind.
+        db.delete(chapters_row)
 
     track_row = db.query(TrackMetadata).filter(TrackMetadata.episode_id == episode.id).first()
     if track_row is None:

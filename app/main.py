@@ -111,6 +111,26 @@ def _episode_backup_info(backup_db: Session, episode: Episode) -> dict:
     return {"has_backup": True, "backed_up_at": backed_up_at}
 
 
+def _episode_backup_content(backup_db: Session, episode: Episode) -> dict:
+    """Like _episode_backup_info, but also includes the actual backed-up
+    chapter XML / track metadata JSON (only used by the single-episode detail
+    endpoint, to avoid fetching this heavier data for every row in a list)."""
+    backup_ep = _backup_episode_row(backup_db, episode.show.library.name, episode.show.name, episode.filename)
+    if backup_ep is None:
+        return {"has_backup": False, "backed_up_at": None, "chapters": None, "track_metadata": None}
+    backed_up_at = None
+    if backup_ep.chapters is not None:
+        backed_up_at = backup_ep.chapters.backed_up_at
+    elif backup_ep.track_metadata is not None:
+        backed_up_at = backup_ep.track_metadata.backed_up_at
+    return {
+        "has_backup": True,
+        "backed_up_at": backed_up_at,
+        "chapters": backup_ep.chapters.chapter_xml if backup_ep.chapters else None,
+        "track_metadata": backup_ep.track_metadata.tracks_json if backup_ep.track_metadata else None,
+    }
+
+
 @app.get("/api/health")
 def health():
     return {
@@ -206,7 +226,7 @@ def get_episode(episode_id: int, db: Session = Depends(get_db), backup_db: Sessi
         raise HTTPException(status_code=404, detail="Episode not found")
     chapters = db.query(Chapters).filter(Chapters.episode_id == ep.id).first()
     track_metadata = db.query(TrackMetadata).filter(TrackMetadata.episode_id == ep.id).first()
-    backup_info = _episode_backup_info(backup_db, ep)
+    backup_info = _episode_backup_content(backup_db, ep)
     return {
         "id": ep.id,
         "filename": ep.filename,
@@ -220,6 +240,8 @@ def get_episode(episode_id: int, db: Session = Depends(get_db), backup_db: Sessi
         "backed_up_at": backup_info["backed_up_at"].isoformat() if backup_info["backed_up_at"] else None,
         "chapters": chapters.chapter_xml if chapters else None,
         "track_metadata": track_metadata.tracks_json if track_metadata else None,
+        "backup_chapters": backup_info["chapters"],
+        "backup_track_metadata": backup_info["track_metadata"],
     }
 
 

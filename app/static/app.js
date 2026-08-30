@@ -472,6 +472,117 @@ function prettyPrintJson(jsonString) {
   }
 }
 
+function buildToggleSection(groupId, title, tabs, defaultKey) {
+  const toggleButtons = tabs
+    .map(
+      (t) =>
+        `<button type="button" class="${t.key === defaultKey ? "active" : ""}" data-toggle-group="${groupId}" data-toggle-key="${t.key}">${escapeHtml(t.label)}</button>`
+    )
+    .join("");
+  const panels = tabs
+    .map(
+      (t) =>
+        `<div data-panel-group="${groupId}" data-panel-key="${t.key}" ${t.key === defaultKey ? "" : 'style="display:none;"'}>${t.html}</div>`
+    )
+    .join("");
+  return `
+    <div class="section-header">
+      <h2 style="margin-top:0;">${escapeHtml(title)}</h2>
+      <div class="view-toggle">${toggleButtons}</div>
+    </div>
+    ${panels}
+  `;
+}
+
+function buildChaptersSection(groupId, chapterXml) {
+  if (!chapterXml) {
+    return '<h2>Chapters</h2><p class="item-sub">No chapters stored.</p>';
+  }
+  const chapters = parseChapterAtoms(chapterXml);
+  const tableRows = chapters.length
+    ? chapters
+        .map(
+          (c) => `<tr>
+              <td>${c.index}</td>
+              <td>${escapeHtml(c.title)}</td>
+              <td>${escapeHtml(formatChapterTime(c.start))}</td>
+              <td>${escapeHtml(formatChapterTime(c.end))}</td>
+            </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="4" class="item-sub">Could not parse chapters as a table.</td></tr>`;
+
+  return buildToggleSection(
+    groupId,
+    "Chapters",
+    [
+      {
+        key: "table",
+        label: "Table",
+        html: `<table><thead><tr><th>#</th><th>Title</th><th>Start</th><th>End</th></tr></thead><tbody>${tableRows}</tbody></table>`,
+      },
+      { key: "file", label: "File", html: `<pre>${escapeHtml(chapterXml)}</pre>` },
+    ],
+    "table"
+  );
+}
+
+function buildTrackSection(groupId, tracksJson) {
+  if (!tracksJson) {
+    return '<h2 style="margin-top:1rem;">Track Metadata</h2><p class="item-sub">No track metadata stored.</p>';
+  }
+  const parsedTracks = parseMediaInfoTracks(tracksJson);
+  let tableRows;
+  if (parsedTracks.status === "invalid") {
+    tableRows = `<tr><td colspan="7" class="item-sub">Could not parse the stored track metadata as JSON.</td></tr>`;
+  } else if (parsedTracks.status === "legacy") {
+    tableRows = `<tr><td colspan="7" class="item-sub">This episode's track metadata was saved in an older format. Back it up again to see it here.</td></tr>`;
+  } else if (parsedTracks.tracks.length === 0) {
+    tableRows = `<tr><td colspan="7" class="item-sub">No video/audio/subtitle tracks found in the stored report.</td></tr>`;
+  } else {
+    tableRows = parsedTracks.tracks
+      .map(
+        (t) => `<tr>
+              <td>${escapeHtml(String(t.id))}</td>
+              <td>${escapeHtml(t.type)}</td>
+              <td>${escapeHtml(t.language)}</td>
+              <td>${escapeHtml(t.name)}</td>
+              <td>${t.default ? "yes" : "no"}</td>
+              <td>${t.forced ? "yes" : "no"}</td>
+              <td>${escapeHtml(t.format)}</td>
+            </tr>`
+      )
+      .join("");
+  }
+
+  return buildToggleSection(
+    groupId,
+    "Track Metadata",
+    [
+      {
+        key: "table",
+        label: "Table",
+        html: `<table><thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Name</th><th>Default</th><th>Forced</th><th>Format</th></tr></thead><tbody>${tableRows}</tbody></table>`,
+      },
+      { key: "file", label: "File", html: `<pre>${escapeHtml(prettyPrintJson(tracksJson))}</pre>` },
+    ],
+    "table"
+  );
+}
+
+function wireToggleGroups(root) {
+  root.querySelectorAll("[data-toggle-group]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const group = btn.dataset.toggleGroup;
+      const key = btn.dataset.toggleKey;
+      root.querySelectorAll(`[data-toggle-group="${group}"]`).forEach((b) => b.classList.toggle("active", b === btn));
+      root.querySelectorAll(`[data-panel-group="${group}"]`).forEach((el) => {
+        el.style.display = el.dataset.panelKey === key ? "" : "none";
+      });
+    });
+  });
+}
+
 async function openEpisodeDetail(episodeId) {
   const modalRoot = document.getElementById("modal-root");
   modalRoot.innerHTML = '<div class="modal-backdrop"><div class="modal">Loading...</div></div>';
@@ -484,87 +595,16 @@ async function openEpisodeDetail(episodeId) {
     return;
   }
 
-  let trackSectionHtml;
-  if (ep.track_metadata) {
-    const parsedTracks = parseMediaInfoTracks(ep.track_metadata);
-    let tableRows;
-    if (parsedTracks.status === "invalid") {
-      tableRows = `<tr><td colspan="7" class="item-sub">Could not parse the stored track metadata as JSON.</td></tr>`;
-    } else if (parsedTracks.status === "legacy") {
-      tableRows = `<tr><td colspan="7" class="item-sub">This episode's track metadata was saved in an older format. Back it up again to see it here.</td></tr>`;
-    } else if (parsedTracks.tracks.length === 0) {
-      tableRows = `<tr><td colspan="7" class="item-sub">No video/audio/subtitle tracks found in the stored report.</td></tr>`;
-    } else {
-      tableRows = parsedTracks.tracks
-        .map(
-          (t) => `<tr>
-              <td>${escapeHtml(String(t.id))}</td>
-              <td>${escapeHtml(t.type)}</td>
-              <td>${escapeHtml(t.language)}</td>
-              <td>${escapeHtml(t.name)}</td>
-              <td>${t.default ? "yes" : "no"}</td>
-              <td>${t.forced ? "yes" : "no"}</td>
-              <td>${escapeHtml(t.format)}</td>
-            </tr>`
-        )
-        .join("");
-    }
-
-    trackSectionHtml = `
-      <div class="section-header">
-        <h2 style="margin-top:1rem;">Track Metadata</h2>
-        <div class="view-toggle">
-          <button type="button" class="active" data-tracks-toggle="table">Table</button>
-          <button type="button" data-tracks-toggle="file">File</button>
-        </div>
-      </div>
-      <div data-tracks-view="table">
-        <table>
-          <thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Name</th><th>Default</th><th>Forced</th><th>Format</th></tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-      <div data-tracks-view="file" style="display:none;"><pre>${escapeHtml(prettyPrintJson(ep.track_metadata))}</pre></div>
-    `;
-  } else {
-    trackSectionHtml = '<h2 style="margin-top:1rem;">Track Metadata</h2><p class="item-sub">No track metadata stored.</p>';
-  }
-
-  let chaptersSectionHtml;
-  if (ep.chapters) {
-    const chapters = parseChapterAtoms(ep.chapters);
-    const tableRows = chapters.length
-      ? chapters
-          .map(
-            (c) => `<tr>
-              <td>${c.index}</td>
-              <td>${escapeHtml(c.title)}</td>
-              <td>${escapeHtml(formatChapterTime(c.start))}</td>
-              <td>${escapeHtml(formatChapterTime(c.end))}</td>
-            </tr>`
-          )
-          .join("")
-      : `<tr><td colspan="4" class="item-sub">Could not parse chapters as a table.</td></tr>`;
-
-    chaptersSectionHtml = `
-      <div class="section-header">
-        <h2 style="margin-top:0;">Chapters</h2>
-        <div class="view-toggle">
-          <button type="button" class="active" data-chapters-toggle="xml">XML</button>
-          <button type="button" data-chapters-toggle="table">Table</button>
-        </div>
-      </div>
-      <div data-chapters-view="xml"><pre>${escapeHtml(ep.chapters)}</pre></div>
-      <div data-chapters-view="table" style="display:none;">
-        <table>
-          <thead><tr><th>#</th><th>Title</th><th>Start</th><th>End</th></tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-    `;
-  } else {
-    chaptersSectionHtml = '<h2>Chapters</h2><p class="item-sub">No chapters stored.</p>';
-  }
+  const scanPanelHtml = `
+    ${buildChaptersSection("scan-chapters", ep.chapters)}
+    ${buildTrackSection("scan-tracks", ep.track_metadata)}
+  `;
+  const backupPanelHtml = ep.has_backup
+    ? `
+      ${buildChaptersSection("backup-chapters", ep.backup_chapters)}
+      ${buildTrackSection("backup-tracks", ep.backup_track_metadata)}
+    `
+    : '<p class="item-sub">No backup stored yet. Back up this episode to see it here.</p>';
 
   const hasScan = Boolean(ep.last_scanned_at);
   modalRoot.innerHTML = `
@@ -581,8 +621,12 @@ async function openEpisodeDetail(episodeId) {
           <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>Backup this episode</button>
           <button data-action="restore-episode">Restore chapters</button>
         </div>
-        ${chaptersSectionHtml}
-        ${trackSectionHtml}
+        <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
+          <button type="button" class="tab-btn active" data-toggle-group="episode-view" data-toggle-key="scan">Scanned Data</button>
+          <button type="button" class="tab-btn" data-toggle-group="episode-view" data-toggle-key="backup">Backup Data</button>
+        </nav>
+        <div data-panel-group="episode-view" data-panel-key="scan">${scanPanelHtml}</div>
+        <div data-panel-group="episode-view" data-panel-key="backup" style="display:none;">${backupPanelHtml}</div>
       </div>
     </div>
   `;
@@ -590,24 +634,7 @@ async function openEpisodeDetail(episodeId) {
   document.getElementById("modal-backdrop").addEventListener("click", (e) => {
     if (e.target.id === "modal-backdrop") closeModal();
   });
-  modalRoot.querySelectorAll('[data-chapters-toggle]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const view = btn.dataset.chaptersToggle;
-      modalRoot.querySelectorAll('[data-chapters-toggle]').forEach((b) => b.classList.toggle("active", b === btn));
-      modalRoot.querySelectorAll('[data-chapters-view]').forEach((el) => {
-        el.style.display = el.dataset.chaptersView === view ? "" : "none";
-      });
-    });
-  });
-  modalRoot.querySelectorAll('[data-tracks-toggle]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const view = btn.dataset.tracksToggle;
-      modalRoot.querySelectorAll('[data-tracks-toggle]').forEach((b) => b.classList.toggle("active", b === btn));
-      modalRoot.querySelectorAll('[data-tracks-view]').forEach((el) => {
-        el.style.display = el.dataset.tracksView === view ? "" : "none";
-      });
-    });
-  });
+  wireToggleGroups(modalRoot);
   modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
   modalRoot.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
     if (hasScan && !confirm(`Rescan "${ep.filename}"? This re-extracts chapters and mediainfo from the file on disk, overwriting the current scan data. Backed-up data is not affected.`)) {
