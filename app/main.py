@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
+from app.backup import backup_episode, backup_library, backup_show
 from app.config import DB_PATH, LIBRARIES_ROOT
 from app.db import get_db, init_db
 from app.models import Chapters, Episode, Library, Show, TrackMetadata
@@ -93,6 +94,30 @@ def get_episode(episode_id: int, db: Session = Depends(get_db)):
         "chapters": chapters.chapter_xml if chapters else None,
         "track_metadata": track_metadata.tracks_json if track_metadata else None,
     }
+
+
+@app.post("/api/shows/{show_id}/backup")
+def backup_show_endpoint(show_id: int, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    return {"results": backup_show(db, show)}
+
+
+@app.post("/api/libraries/{library_id}/backup")
+def backup_library_endpoint(library_id: int, db: Session = Depends(get_db)):
+    library = db.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="Library not found")
+    return {"results": backup_library(db, library)}
+
+
+@app.post("/api/episodes/{episode_id}/backup")
+def backup_episode_endpoint(episode_id: int, db: Session = Depends(get_db)):
+    episode = db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return backup_episode(db, episode)
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
