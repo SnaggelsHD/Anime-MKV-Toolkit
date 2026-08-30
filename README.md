@@ -29,8 +29,8 @@ docker compose build
 docker compose up -d
 ```
 
-The UI will be available at [http://localhost:8000](http://localhost:8000),
-and the health check at [http://localhost:8000/api/health](http://localhost:8000/api/health).
+The UI will be available at [http://localhost:8077](http://localhost:8077),
+and the health check at [http://localhost:8077/api/health](http://localhost:8077/api/health).
 
 ## Mounting your libraries
 
