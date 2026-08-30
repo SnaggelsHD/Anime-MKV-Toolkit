@@ -6,6 +6,19 @@ const state = {
   episodes: [],
 };
 
+const UNSORTED_SEASON = "__unsorted__";
+
+function seasonQuery(seasonKey) {
+  return seasonKey === UNSORTED_SEASON ? "" : `?season=${encodeURIComponent(seasonKey)}`;
+}
+
+function formatTimestamp(iso) {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
 function getStoredTheme() {
   try {
     return localStorage.getItem("theme");
@@ -189,14 +202,26 @@ function renderLibraries() {
         <div class="item-name-wrap">
           <span class="chevron">▸</span>
           <div>
-            <div class="item-name">${escapeHtml(lib.name)}</div>
+            <div class="item-name">${escapeHtml(lib.name)}${lib.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
             <div class="item-sub">${escapeHtml(lib.path)}</div>
             <div class="item-sub">${lib.show_count} show(s)</div>
           </div>
         </div>
       </div>
+      <div class="item-actions" style="margin-top:0.4rem;">
+        <button data-action="scan-library">Scan</button>
+        <button class="primary" data-action="backup-library">Backup</button>
+      </div>
     `;
     div.querySelector('[data-role="select-library"]').addEventListener("click", () => selectLibrary(lib.id));
+    div.querySelector('[data-action="scan-library"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      startJob(`/api/libraries/${lib.id}/scan`, () => selectLibrary(lib.id));
+    });
+    div.querySelector('[data-action="backup-library"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      startJob(`/api/libraries/${lib.id}/backup`, () => selectLibrary(lib.id));
+    });
     list.appendChild(div);
   }
 }
@@ -236,11 +261,12 @@ function renderShowDetail() {
           <div class="item-name-wrap">
             <span class="chevron">▸</span>
             <div>
-              <div class="item-name">${escapeHtml(show.name)}</div>
-              <div class="item-sub">${show.episode_count} episode(s)</div>
+              <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+              <div class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up</div>
             </div>
           </div>
           <div class="item-actions">
+            <button data-action="scan-show" data-show-id="${show.id}">Scan</button>
             <button class="primary" data-action="backup-show" data-show-id="${show.id}">Backup</button>
             <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
           </div>
@@ -260,6 +286,15 @@ function renderShowDetail() {
       el.addEventListener("click", () => toggleShowEpisodes(Number(el.dataset.showId)));
     }
   });
+  detail.querySelectorAll('[data-action="scan-show"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = Number(btn.dataset.showId);
+      startJob(`/api/shows/${id}/scan`, () =>
+        selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
+      );
+    })
+  );
   detail.querySelectorAll('[data-action="backup-show"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -313,22 +348,32 @@ function renderEpisodes(showId, container) {
 
   const bySeason = new Map();
   for (const ep of state.episodes) {
-    const key = ep.season || "Unsorted";
+    const key = ep.season || UNSORTED_SEASON;
     if (!bySeason.has(key)) bySeason.set(key, []);
     bySeason.get(key).push(ep);
   }
 
   let html = "";
-  for (const [season, eps] of bySeason) {
-    html += `<div class="season-heading">${season === "Unsorted" ? "Unsorted" : `Season ${escapeHtml(season)}`}</div>`;
+  for (const [seasonKey, eps] of bySeason) {
+    const label = seasonKey === UNSORTED_SEASON ? "Unsorted" : `Season ${escapeHtml(seasonKey)}`;
+    const scannedCount = eps.filter((e) => e.has_scan).length;
+    const backedUpCount = eps.filter((e) => e.has_backup).length;
+    html += `
+      <div class="season-heading-row">
+        <span class="season-heading">${label} — ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up</span>
+        <div class="item-actions">
+          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}">Scan</button>
+          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}">Backup</button>
+        </div>
+      </div>`;
     for (const ep of eps) {
       html += `
         <div class="episode-row" data-episode-id="${ep.id}">
-          <div class="episode-name">${escapeHtml(ep.filename)}</div>
+          <div class="episode-name">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
           <div class="flags">
-            <span class="${ep.has_chapters ? "flag-ok" : "flag-missing"}">${ep.has_chapters ? "chapters ✓" : "chapters ✗"}</span>
+            <span class="${ep.has_scan ? "flag-ok" : "flag-missing"}">${ep.has_scan ? "scanned ✓" : "scanned ✗"}</span>
             &nbsp;
-            <span class="${ep.has_track_metadata ? "flag-ok" : "flag-missing"}">${ep.has_track_metadata ? "tracks ✓" : "tracks ✗"}</span>
+            <span class="${ep.has_backup ? "flag-ok" : "flag-missing"}">${ep.has_backup ? "backed up ✓" : "backed up ✗"}</span>
           </div>
         </div>`;
     }
@@ -336,6 +381,18 @@ function renderEpisodes(showId, container) {
   container.innerHTML = html;
   container.querySelectorAll("[data-episode-id]").forEach((el) =>
     el.addEventListener("click", () => openEpisodeDetail(Number(el.dataset.episodeId)))
+  );
+  container.querySelectorAll('[data-action="scan-season"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startJob(`/api/shows/${showId}/season/scan${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+    })
+  );
+  container.querySelectorAll('[data-action="backup-season"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startJob(`/api/shows/${showId}/season/backup${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+    })
   );
 }
 
@@ -495,16 +552,19 @@ async function openEpisodeDetail(episodeId) {
     chaptersSectionHtml = '<h2>Chapters</h2><p class="item-sub">No chapters stored.</p>';
   }
 
+  const hasScan = Boolean(ep.last_scanned_at);
   modalRoot.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal">
         <div class="modal-header">
-          <h3>${escapeHtml(ep.filename)}</h3>
+          <h3>${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h3>
           <button data-action="close-modal">Close</button>
         </div>
         <p class="item-sub">${escapeHtml(ep.path)}</p>
+        <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))}</p>
         <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
-          <button class="primary" data-action="backup-episode">Backup this episode</button>
+          <button data-action="scan-episode">Scan</button>
+          <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>Backup this episode</button>
           <button data-action="restore-episode">Restore chapters</button>
         </div>
         ${chaptersSectionHtml}
@@ -535,6 +595,12 @@ async function openEpisodeDetail(episodeId) {
     });
   });
   modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
+  modalRoot.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
+    startJob(`/api/episodes/${episodeId}/scan`, () => {
+      openEpisodeDetail(episodeId);
+      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
+    });
+  });
   modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", () => {
     startJob(`/api/episodes/${episodeId}/backup`, () => {
       openEpisodeDetail(episodeId);
@@ -565,7 +631,6 @@ function initTabs() {
   });
 }
 
-const UNSORTED_SEASON = "__unsorted__";
 let clearFormEpisodes = [];
 
 function resetSelect(select, placeholder, disabled) {
@@ -632,6 +697,12 @@ function initSettingsTab() {
     if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
   };
 
+  document.getElementById("settings-scan-all").addEventListener("click", () => {
+    if (!confirm("Scan every library now? This may take a while depending on how large your libraries are.")) {
+      return;
+    }
+    startJob("/api/scan/all", refreshAfterGlobalOp);
+  });
   document.getElementById("settings-backup-all").addEventListener("click", () => {
     if (!confirm("Backup every library now? This may take a while depending on how large your libraries are.")) {
       return;

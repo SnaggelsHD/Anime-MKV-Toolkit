@@ -1,20 +1,22 @@
 # MKV Chapter & Media Info Backup
 
 A Dockerized web app to back up and restore MKV chapter data and track metadata
-(mediainfo) for an anime library. Scans your library folders, extracts embedded
-chapters and track metadata for each episode, stores them in SQLite, and can
-restore chapters back into the MKV files later.
+(mediainfo) for an anime library, using a two-phase **scan → backup** workflow
+so backed-up data survives even if the source files are later moved, renamed,
+or temporarily missing.
 
-Matching is done by `(show, filename)` only — files are not hashed, so this
-assumes stable filenames (e.g. as produced by TinyMediaManager).
+Matching is done by `(library, show, filename)` only — files are not hashed,
+so this assumes stable filenames (e.g. as produced by TinyMediaManager).
 
 ## Status
 
-Feature-complete for the core workflow: scans libraries/shows/episodes from
-disk, backs up chapters and track metadata to SQLite, restores chapters back
-into MKV files, and exposes it all through a web UI. Track metadata restore
-(re-applying track names/languages/flags) is not implemented — only chapter
-restore, per the original scope.
+Feature-complete for the core workflow: scan extracts chapters and mediainfo
+from disk into a scan database, backup copies already-scanned data into a
+separate backup database, and restore writes backed-up chapters back into the
+MKV files. All three (plus clearing backup data) work at the episode, season,
+show, library, or all-libraries level, through a web UI with live progress and
+dark mode. Track metadata restore (re-applying track names/languages/flags) is
+not implemented — only chapter restore, per the original scope.
 
 ## Requirements
 
@@ -46,27 +48,60 @@ Each top-level folder under `/libraries` is treated as a **library**
 (e.g. `/libraries/Anime/Some Anime Show`), and each `.mkv` file inside a show
 folder (optionally under season subfolders) as an **episode**.
 
-The SQLite database is stored under `./data` on the host (mounted to `/data`
-in the container), so it persists across container restarts.
+Two separate SQLite databases live under `./data` on the host (mounted to
+`/data` in the container), so both persist across container restarts:
+
+- `chapters.db` — the **scan database**: library/show/episode structure plus
+  whatever chapters/mediainfo were last scanned from disk, each episode's last
+  scan timestamp, and `missing` flags for anything that used to be found but
+  no longer is.
+- `backup.db` — the **backup database**: a durable archive of scanned data
+  you've explicitly chosen to keep, independent of the scan database. This is
+  what restore reads from, and what "Export backup database" in Settings
+  downloads. Override its path with the `BACKUP_DB_PATH` environment variable
+  if needed (defaults to `/data/backup.db`).
 
 ## Using the UI
 
-Once running, open the web UI to:
+The workflow is **scan, then backup, then (optionally, later) restore**:
 
-- Browse libraries → shows → episodes (episodes are grouped by season where
-  detectable from the filename or folder name).
-- Back up chapters and track metadata for a whole library, a show, or a
-  single episode, via the "Backup" buttons at each level.
-- View stored chapters and track metadata per episode by clicking an episode
-  row — each toggles between a parsed table and the raw stored data
-  (chapter XML, or the complete mediainfo JSON report).
-- Restore chapters from the database back into the MKV files on disk, via
-  the "Restore" buttons at each level.
+1. **Scan** a library, show, season, or episode (or "Scan all libraries" in
+   Settings) to extract chapters and the full mediainfo report from the MKV
+   files currently on disk into the scan database. This also records a
+   per-episode "last scanned" timestamp and detects anything that's gone
+   missing since the last scan.
+2. **Backup** copies already-scanned data into the separate backup database.
+   You can only back up an episode after it's been scanned at least once —
+   backing up an unscanned episode fails with a clear error, and the "Backup
+   this episode" button in the episode detail view is disabled until it's
+   been scanned.
+3. **Restore** writes the chapters from the **backup** database back into the
+   MKV file on disk. This works even if the file was temporarily missing and
+   has since reappeared — the backup database isn't affected by files
+   disappearing or reappearing on disk, only by explicit backup/clear actions.
 
-Matching between what's on disk and what's in the database is done by
-`(show, filename)` only — files are not hashed or checksummed. Every list
-endpoint re-scans the filesystem on read, so newly added episodes show up
-without a restart.
+Additional UI notes:
+
+- Each library, show, season, and episode shows how many of its episodes are
+  scanned and backed up. A show or episode that used to exist on disk but
+  doesn't anymore is flagged **MISSING** rather than removed — rescan it once
+  the files are back to clear the flag.
+- Clicking an episode row shows its chapters and track metadata (each toggles
+  between a parsed table and the raw stored data — chapter XML, or the
+  complete mediainfo JSON report), along with its last-scanned and backed-up
+  timestamps.
+- **Clearing** data (per episode/season/show, or the whole database, from
+  Settings) only removes it from the **backup** database — the scan database
+  is never touched, so you can immediately re-backup from what's already been
+  scanned.
+- **Settings → Export** downloads the backup database file (`backup.db`)
+  directly, for safekeeping outside the container.
+- Long-running scan/backup/restore operations show live progress in a task
+  queue widget in the bottom-right corner rather than blocking the UI.
+
+Matching between what's on disk, the scan database, and the backup database is
+done by `(library name, show name, filename)` only — files are not hashed or
+checksummed.
 
 **Note on restore:** restoring rewrites the MKV file in place (remux to a
 temp file in the same folder, then atomic replace). Track metadata restore
@@ -77,7 +112,7 @@ chapters are restored.
 
 - No file hashing/checksums — matching is filename-based, so it assumes
   stable filenames (e.g. from TinyMediaManager).
-- Backup/restore operations are synchronous HTTP calls; a large library
-  backup may take a while to return.
-- Logs (including per-episode backup/restore success and failure) go to
+- Scan/backup/restore operations run as background jobs (see the task queue
+  in the UI); a large library scan or backup may take a while to finish.
+- Logs (including per-episode scan/backup/restore success and failure) go to
   stdout — view them with `docker compose logs -f`.

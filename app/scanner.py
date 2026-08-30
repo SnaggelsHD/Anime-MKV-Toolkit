@@ -81,35 +81,50 @@ def find_episodes(show_path: str) -> list[ScannedEpisode]:
 
 
 def sync_libraries(db: Session, libraries_root: str) -> list[Library]:
-    """Upsert libraries found on disk into the DB. Does not delete stale rows."""
+    """Upsert libraries found on disk into the DB. Stale rows are kept but
+    flagged as missing rather than deleted, and un-flagged if they reappear."""
     existing = {lib.name: lib for lib in db.query(Library).all()}
+    found_names = set()
     for name, path in find_libraries(libraries_root):
+        found_names.add(name)
         lib = existing.get(name)
         if lib is None:
-            lib = Library(name=name, path=path)
+            lib = Library(name=name, path=path, missing=False)
             db.add(lib)
-        elif lib.path != path:
+        else:
             lib.path = path
+            lib.missing = False
+    for name, lib in existing.items():
+        if name not in found_names:
+            lib.missing = True
     db.commit()
     return db.query(Library).order_by(Library.name).all()
 
 
 def sync_shows(db: Session, library: Library) -> list[Show]:
     existing = {show.name: show for show in db.query(Show).filter(Show.library_id == library.id).all()}
+    found_names = set()
     for name, path in find_shows(library.path):
+        found_names.add(name)
         show = existing.get(name)
         if show is None:
-            show = Show(library_id=library.id, name=name, path=path)
+            show = Show(library_id=library.id, name=name, path=path, missing=False)
             db.add(show)
-        elif show.path != path:
+        else:
             show.path = path
+            show.missing = False
+    for name, show in existing.items():
+        if name not in found_names:
+            show.missing = True
     db.commit()
     return db.query(Show).filter(Show.library_id == library.id).order_by(Show.name).all()
 
 
 def sync_episodes(db: Session, show: Show) -> list[Episode]:
     existing = {ep.filename: ep for ep in db.query(Episode).filter(Episode.show_id == show.id).all()}
+    found_filenames = set()
     for scanned in find_episodes(show.path):
+        found_filenames.add(scanned.filename)
         ep = existing.get(scanned.filename)
         if ep is None:
             ep = Episode(
@@ -118,11 +133,16 @@ def sync_episodes(db: Session, show: Show) -> list[Episode]:
                 path=scanned.path,
                 season=scanned.season,
                 episode=scanned.episode,
+                missing=False,
             )
             db.add(ep)
         else:
             ep.path = scanned.path
             ep.season = scanned.season
             ep.episode = scanned.episode
+            ep.missing = False
+    for filename, ep in existing.items():
+        if filename not in found_filenames:
+            ep.missing = True
     db.commit()
     return db.query(Episode).filter(Episode.show_id == show.id).order_by(Episode.filename).all()

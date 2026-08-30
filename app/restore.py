@@ -5,7 +5,8 @@ import tempfile
 
 from sqlalchemy.orm import Session
 
-from app.models import Chapters, Episode, Library, Show
+from app.backup_models import BackupChapters, BackupEpisode, BackupLibrary, BackupShow
+from app.models import Episode, Library, Show
 from app.scanner import sync_episodes, sync_shows
 
 logger = logging.getLogger("mkv_backup")
@@ -13,11 +14,29 @@ logger = logging.getLogger("mkv_backup")
 TIMEOUT = 300
 
 
-def restore_chapters_for_episode(db: Session, episode: Episode) -> dict:
+def _find_backup_chapter_xml(backup_db: Session, episode: Episode) -> str | None:
+    library_name = episode.show.library.name
+    show_name = episode.show.name
+    row = (
+        backup_db.query(BackupChapters)
+        .join(BackupEpisode, BackupChapters.episode_id == BackupEpisode.id)
+        .join(BackupShow, BackupEpisode.show_id == BackupShow.id)
+        .join(BackupLibrary, BackupShow.library_id == BackupLibrary.id)
+        .filter(
+            BackupLibrary.name == library_name,
+            BackupShow.name == show_name,
+            BackupEpisode.filename == episode.filename,
+        )
+        .first()
+    )
+    return row.chapter_xml if row else None
+
+
+def restore_chapters_for_episode(scan_db: Session, backup_db: Session, episode: Episode) -> dict:
     result = {"episode_id": episode.id, "filename": episode.filename}
 
-    chapters_row = db.query(Chapters).filter(Chapters.episode_id == episode.id).first()
-    if chapters_row is None:
+    chapter_xml = _find_backup_chapter_xml(backup_db, episode)
+    if chapter_xml is None:
         return {**result, "ok": False, "error": "No stored chapters for this episode"}
 
     if not os.path.isfile(episode.path):
@@ -32,7 +51,7 @@ def restore_chapters_for_episode(db: Session, episode: Episode) -> dict:
 
     try:
         with open(chapters_path, "w", encoding="utf-8") as f:
-            f.write(chapters_row.chapter_xml)
+            f.write(chapter_xml)
 
         proc = subprocess.run(
             ["mkvmerge", "-o", out_path, "--chapters", chapters_path, episode.path],
@@ -55,20 +74,20 @@ def restore_chapters_for_episode(db: Session, episode: Episode) -> dict:
                 os.remove(p)
 
 
-def restore_show(db: Session, show: Show, on_result=None) -> list[dict]:
-    episodes = sync_episodes(db, show)
+def restore_show(scan_db: Session, backup_db: Session, show: Show, on_result=None) -> list[dict]:
+    episodes = sync_episodes(scan_db, show)
     results = []
     for ep in episodes:
-        result = restore_chapters_for_episode(db, ep)
+        result = restore_chapters_for_episode(scan_db, backup_db, ep)
         results.append(result)
         if on_result:
             on_result(result)
     return results
 
 
-def restore_library(db: Session, library: Library, on_result=None) -> list[dict]:
-    shows = sync_shows(db, library)
+def restore_library(scan_db: Session, backup_db: Session, library: Library, on_result=None) -> list[dict]:
+    shows = sync_shows(scan_db, library)
     results = []
     for show in shows:
-        results.extend(restore_show(db, show, on_result=on_result))
+        results.extend(restore_show(scan_db, backup_db, show, on_result=on_result))
     return results

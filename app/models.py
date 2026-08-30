@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Integer,
     String,
@@ -24,6 +25,7 @@ class Library(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=False)
     path = Column(String, nullable=False)
+    missing = Column(Boolean, nullable=False, default=False)
 
     shows = relationship("Show", back_populates="library", cascade="all, delete-orphan")
 
@@ -36,6 +38,7 @@ class Show(Base):
     library_id = Column(Integer, ForeignKey("libraries.id"), nullable=False)
     name = Column(String, nullable=False)
     path = Column(String, nullable=False)
+    missing = Column(Boolean, nullable=False, default=False)
 
     library = relationship("Library", back_populates="shows")
     episodes = relationship("Episode", back_populates="show", cascade="all, delete-orphan")
@@ -51,6 +54,8 @@ class Episode(Base):
     path = Column(String, nullable=False)
     season = Column(String, nullable=True)
     episode = Column(String, nullable=True)
+    missing = Column(Boolean, nullable=False, default=False)
+    last_scanned_at = Column(DateTime, nullable=True)
 
     show = relationship("Show", back_populates="episodes")
     chapters = relationship("Chapters", back_populates="episode", uselist=False, cascade="all, delete-orphan")

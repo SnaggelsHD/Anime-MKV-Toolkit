@@ -29,19 +29,26 @@
   </main>
   <main id="view-settings" style="display:none;">
     <section class="panel">
-      <h2>Global Backup / Restore</h2>
-      <p class="item-sub">Runs backup or restore across every library found under the mounted /libraries path.</p>
+      <h2>Global Scan / Backup / Restore</h2>
+      <p class="item-sub">
+        Scan extracts chapters and mediainfo from disk into the scan database. Backup copies
+        already-scanned data into the separate backup database. Restore writes backed-up
+        chapters back into the MKV files. Runs across every library found under the mounted
+        /libraries path.
+      </p>
       <div class="settings-actions">
+        <button type="button" id="settings-scan-all">Scan all libraries</button>
         <button type="button" class="primary" id="settings-backup-all">Backup all libraries</button>
         <button type="button" id="settings-restore-all">Restore all libraries</button>
       </div>
     </section>
 
     <section class="panel">
-      <h2>Clear From Database</h2>
+      <h2>Clear From Backup Database</h2>
       <p class="item-sub">
-        Removes stored chapters and track metadata from the database for the selected scope.
-        Files on disk are never touched — the item reappears without backup data next time it's viewed.
+        Removes stored chapters and track metadata from the <strong>backup database only</strong>.
+        The scan database (and its scanned chapters/mediainfo) is never touched, so you can
+        re-backup from it at any time. Files on disk are never touched either way.
       </p>
       <div class="settings-clear-form">
         <label>Library
@@ -61,12 +68,19 @@
     </section>
 
     <section class="panel">
+      <h2>Export</h2>
+      <p class="item-sub">Download the backup database file (backup.db) for safekeeping.</p>
+      <a class="button-link" id="export-backup-link" href="/api/backup/export" download="backup.db">Export backup database</a>
+    </section>
+
+    <section class="panel">
       <h2>Danger Zone</h2>
       <p class="item-sub">
         Permanently deletes every library, show, episode, chapter, and track metadata record
-        from the database. Files on disk are never touched.
+        from the <strong>backup database</strong>. The scan database is never touched, and files
+        on disk are never touched.
       </p>
-      <button type="button" class="danger" id="settings-clear-db">Clear entire database</button>
+      <button type="button" class="danger" id="settings-clear-db">Clear entire backup database</button>
     </section>
   </main>
   <div id="modal-root"></div>
