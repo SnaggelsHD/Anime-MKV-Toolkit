@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.backup import backup_episode, backup_library, backup_show
 from app.config import DB_PATH, LIBRARIES_ROOT
 from app.db import get_db, init_db
+from app.maintenance import backup_all, clear_database, delete_episode, delete_season, delete_show, restore_all
 from app.models import Chapters, Episode, Library, Show, TrackMetadata
 from app.restore import restore_chapters_for_episode, restore_library, restore_show
 from app.scanner import sync_episodes, sync_libraries, sync_shows
@@ -35,7 +36,11 @@ def health():
 @app.get("/api/libraries")
 def list_libraries(db: Session = Depends(get_db)):
     libraries = sync_libraries(db, LIBRARIES_ROOT)
-    return [{"id": lib.id, "name": lib.name, "path": lib.path} for lib in libraries]
+    result = []
+    for lib in libraries:
+        shows = sync_shows(db, lib)
+        result.append({"id": lib.id, "name": lib.name, "path": lib.path, "show_count": len(shows)})
+    return result
 
 
 @app.get("/api/libraries/{library_id}/shows")
@@ -149,6 +154,49 @@ def restore_library_endpoint(library_id: int, db: Session = Depends(get_db)):
     if library is None:
         raise HTTPException(status_code=404, detail="Library not found")
     return {"results": restore_library(db, library)}
+
+
+@app.post("/api/backup/all")
+def backup_all_endpoint(db: Session = Depends(get_db)):
+    return {"results": backup_all(db)}
+
+
+@app.post("/api/restore/all")
+def restore_all_endpoint(db: Session = Depends(get_db)):
+    return {"results": restore_all(db)}
+
+
+@app.delete("/api/database")
+def clear_database_endpoint(db: Session = Depends(get_db)):
+    clear_database(db)
+    return {"ok": True}
+
+
+@app.delete("/api/shows/{show_id}")
+def delete_show_endpoint(show_id: int, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    delete_show(db, show)
+    return {"ok": True}
+
+
+@app.delete("/api/shows/{show_id}/season")
+def delete_season_endpoint(show_id: int, season: str | None = None, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    deleted = delete_season(db, show_id, season)
+    return {"ok": True, "deleted": deleted}
+
+
+@app.delete("/api/episodes/{episode_id}")
+def delete_episode_endpoint(episode_id: int, db: Session = Depends(get_db)):
+    episode = db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    delete_episode(db, episode)
+    return {"ok": True}
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

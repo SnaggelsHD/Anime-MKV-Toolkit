@@ -113,14 +113,45 @@ header h1 {
   color: var(--muted);
 }
 
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.tab-btn:hover { background: var(--hover); }
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 main {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 1rem;
   padding: 1rem 1.5rem;
   max-width: 1200px;
   margin: 0 auto;
 }
+
+#view-library {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1rem;
+}
+
+#view-settings .panel + .panel { margin-top: 1rem; }
 
 .panel {
   background: var(--panel);
@@ -206,6 +237,45 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-hover); }
 button:disabled { opacity: 0.6; cursor: default; }
+button:disabled:hover { background: var(--panel); }
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+button.danger:hover { background: var(--danger); color: #fff; }
+
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+}
+select:disabled { opacity: 0.6; }
+
+.settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.settings-clear-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.settings-clear-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-width: 170px;
+}
 
 .season-heading {
   font-size: 0.8rem;

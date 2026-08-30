@@ -100,6 +100,7 @@ function renderLibraries() {
           <div>
             <div class="item-name">${escapeHtml(lib.name)}</div>
             <div class="item-sub">${escapeHtml(lib.path)}</div>
+            <div class="item-sub">${lib.show_count} show(s)</div>
           </div>
         </div>
       </div>
@@ -430,6 +431,195 @@ async function runOperation(path, pendingMessage, onDone) {
   }
 }
 
+function initTabs() {
+  const buttons = document.querySelectorAll(".tab-btn");
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.toggle("active", b === btn));
+      document.getElementById("view-library").style.display = btn.dataset.tab === "library" ? "" : "none";
+      document.getElementById("view-settings").style.display = btn.dataset.tab === "settings" ? "" : "none";
+      if (btn.dataset.tab === "settings") populateClearLibraries();
+    });
+  });
+}
+
+const UNSORTED_SEASON = "__unsorted__";
+let clearFormEpisodes = [];
+
+function resetSelect(select, placeholder, disabled) {
+  select.innerHTML = `<option value="">${placeholder}</option>`;
+  select.disabled = disabled;
+}
+
+async function populateClearLibraries() {
+  const libSelect = document.getElementById("clear-library");
+  const showSelect = document.getElementById("clear-show");
+  const seasonSelect = document.getElementById("clear-season");
+  const episodeSelect = document.getElementById("clear-episode");
+  const clearBtn = document.getElementById("clear-selected-btn");
+
+  resetSelect(showSelect, "Select a show…", true);
+  resetSelect(seasonSelect, "All seasons", true);
+  resetSelect(episodeSelect, "All episodes", true);
+  clearBtn.disabled = true;
+
+  const previousValue = libSelect.value;
+  libSelect.innerHTML = '<option value="">Select a library…</option>';
+  try {
+    const libraries = await api("/api/libraries");
+    for (const lib of libraries) {
+      const opt = document.createElement("option");
+      opt.value = lib.id;
+      opt.textContent = `${lib.name} (${lib.show_count} shows)`;
+      libSelect.appendChild(opt);
+    }
+    if (previousValue && libraries.some((l) => String(l.id) === previousValue)) {
+      libSelect.value = previousValue;
+    }
+  } catch (err) {
+    toast(`Failed to load libraries: ${err.message}`, "error");
+  }
+}
+
+function populateClearEpisodeOptions(seasonValue) {
+  const episodeSelect = document.getElementById("clear-episode");
+  let filtered;
+  if (seasonValue === "") filtered = clearFormEpisodes;
+  else if (seasonValue === UNSORTED_SEASON) filtered = clearFormEpisodes.filter((e) => !e.season);
+  else filtered = clearFormEpisodes.filter((e) => e.season === seasonValue);
+
+  episodeSelect.innerHTML = '<option value="">All episodes</option>';
+  for (const ep of filtered) {
+    const opt = document.createElement("option");
+    opt.value = ep.id;
+    opt.textContent = ep.filename;
+    episodeSelect.appendChild(opt);
+  }
+  episodeSelect.disabled = false;
+}
+
+function initSettingsTab() {
+  const libSelect = document.getElementById("clear-library");
+  const showSelect = document.getElementById("clear-show");
+  const seasonSelect = document.getElementById("clear-season");
+  const episodeSelect = document.getElementById("clear-episode");
+  const clearBtn = document.getElementById("clear-selected-btn");
+
+  document.getElementById("settings-backup-all").addEventListener("click", () => {
+    runOperation("/api/backup/all", "Backing up all libraries...", loadLibraries);
+  });
+  document.getElementById("settings-restore-all").addEventListener("click", () => {
+    runOperation("/api/restore/all", "Restoring all libraries...", loadLibraries);
+  });
+
+  document.getElementById("settings-clear-db").addEventListener("click", async () => {
+    if (
+      !confirm(
+        "Clear the ENTIRE database? This permanently deletes every stored chapter and track metadata record for every library. Files on disk are never touched. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    try {
+      await api("/api/database", { method: "DELETE" });
+      toast("Database cleared", "ok");
+      loadLibraries();
+      if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
+      populateClearLibraries();
+    } catch (err) {
+      toast(`Failed to clear database: ${err.message}`, "error");
+    }
+  });
+
+  libSelect.addEventListener("change", async () => {
+    resetSelect(showSelect, "Select a show…", true);
+    resetSelect(seasonSelect, "All seasons", true);
+    resetSelect(episodeSelect, "All episodes", true);
+    clearFormEpisodes = [];
+    clearBtn.disabled = true;
+    if (!libSelect.value) return;
+    try {
+      const shows = await api(`/api/libraries/${libSelect.value}/shows`);
+      showSelect.innerHTML = '<option value="">Select a show…</option>';
+      for (const show of shows) {
+        const opt = document.createElement("option");
+        opt.value = show.id;
+        opt.textContent = `${show.name} (${show.episode_count} eps)`;
+        showSelect.appendChild(opt);
+      }
+      showSelect.disabled = false;
+    } catch (err) {
+      toast(`Failed to load shows: ${err.message}`, "error");
+    }
+  });
+
+  showSelect.addEventListener("change", async () => {
+    resetSelect(seasonSelect, "All seasons", true);
+    resetSelect(episodeSelect, "All episodes", true);
+    clearFormEpisodes = [];
+    if (!showSelect.value) {
+      clearBtn.disabled = true;
+      return;
+    }
+    clearBtn.disabled = false;
+    try {
+      clearFormEpisodes = await api(`/api/shows/${showSelect.value}/episodes`);
+      const seasons = Array.from(new Set(clearFormEpisodes.map((e) => e.season || UNSORTED_SEASON)));
+      seasonSelect.innerHTML = '<option value="">All seasons</option>';
+      for (const season of seasons) {
+        const opt = document.createElement("option");
+        opt.value = season;
+        opt.textContent = season === UNSORTED_SEASON ? "Unsorted" : `Season ${season}`;
+        seasonSelect.appendChild(opt);
+      }
+      seasonSelect.disabled = false;
+      populateClearEpisodeOptions("");
+    } catch (err) {
+      toast(`Failed to load episodes: ${err.message}`, "error");
+    }
+  });
+
+  seasonSelect.addEventListener("change", () => {
+    populateClearEpisodeOptions(seasonSelect.value);
+  });
+
+  clearBtn.addEventListener("click", async () => {
+    const showId = showSelect.value;
+    const showName = showSelect.options[showSelect.selectedIndex]?.textContent || "this show";
+    const seasonValue = seasonSelect.value;
+    const episodeId = episodeSelect.value;
+    const episodeName = episodeSelect.options[episodeSelect.selectedIndex]?.textContent || "";
+
+    let scopeLabel;
+    let request;
+    if (episodeId) {
+      scopeLabel = `episode "${episodeName}"`;
+      request = () => api(`/api/episodes/${episodeId}`, { method: "DELETE" });
+    } else if (seasonValue === UNSORTED_SEASON) {
+      scopeLabel = `unsorted episodes of "${showName}"`;
+      request = () => api(`/api/shows/${showId}/season`, { method: "DELETE" });
+    } else if (seasonValue !== "") {
+      scopeLabel = `Season ${seasonValue} of "${showName}"`;
+      request = () => api(`/api/shows/${showId}/season?season=${encodeURIComponent(seasonValue)}`, { method: "DELETE" });
+    } else {
+      scopeLabel = `show "${showName}"`;
+      request = () => api(`/api/shows/${showId}`, { method: "DELETE" });
+    }
+
+    if (!confirm(`Clear ${scopeLabel} from the database? This cannot be undone. Files on disk are never touched.`)) {
+      return;
+    }
+    try {
+      await request();
+      toast(`Cleared ${scopeLabel}`, "ok");
+      if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
+      libSelect.dispatchEvent(new Event("change"));
+    } catch (err) {
+      toast(`Failed to clear: ${err.message}`, "error");
+    }
+  });
+}
+
 function setStatus(text) {
   document.getElementById("status-line").textContent = text;
 }
@@ -443,4 +633,6 @@ function escapeHtml(str) {
 }
 
 initTheme();
+initTabs();
+initSettingsTab();
 loadLibraries();
