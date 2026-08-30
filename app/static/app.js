@@ -2,7 +2,7 @@ const state = {
   libraries: [],
   selectedLibraryId: null,
   shows: [],
-  selectedShowId: null,
+  expandedShowIds: new Set(),
   episodes: [],
 };
 
@@ -92,12 +92,15 @@ function renderLibraries() {
   }
   for (const lib of state.libraries) {
     const div = document.createElement("div");
-    div.className = "library-item";
+    div.className = `library-item${lib.id === state.selectedLibraryId ? " selected" : ""}`;
     div.innerHTML = `
       <div class="item-row" data-role="select-library">
-        <div>
-          <div class="item-name">${escapeHtml(lib.name)}</div>
-          <div class="item-sub">${escapeHtml(lib.path)}</div>
+        <div class="item-name-wrap">
+          <span class="chevron">▸</span>
+          <div>
+            <div class="item-name">${escapeHtml(lib.name)}</div>
+            <div class="item-sub">${escapeHtml(lib.path)}</div>
+          </div>
         </div>
       </div>
       <div class="item-actions" style="margin-top:0.4rem;">
@@ -119,8 +122,11 @@ function renderLibraries() {
 }
 
 async function selectLibrary(libraryId) {
+  if (state.selectedLibraryId !== libraryId) {
+    state.expandedShowIds.clear();
+  }
   state.selectedLibraryId = libraryId;
-  state.selectedShowId = null;
+  renderLibraries();
   const detail = document.getElementById("show-detail");
   detail.innerHTML = '<p id="show-detail-placeholder">Loading shows...</p>';
   try {
@@ -130,6 +136,11 @@ async function selectLibrary(libraryId) {
     return;
   }
   renderShowDetail();
+  for (const showId of Array.from(state.expandedShowIds)) {
+    if (state.shows.some((s) => s.id === showId)) {
+      toggleShowEpisodes(showId, true);
+    }
+  }
 }
 
 function renderShowDetail() {
@@ -140,11 +151,14 @@ function renderShowDetail() {
   const showsHtml = state.shows
     .map(
       (show) => `
-      <div class="show-item">
+      <div class="show-item${state.expandedShowIds.has(show.id) ? " expanded" : ""}" data-show-item="${show.id}">
         <div class="item-row" data-show-id="${show.id}">
-          <div>
-            <div class="item-name">${escapeHtml(show.name)}</div>
-            <div class="item-sub">${show.episode_count} episode(s)</div>
+          <div class="item-name-wrap">
+            <span class="chevron">▸</span>
+            <div>
+              <div class="item-name">${escapeHtml(show.name)}</div>
+              <div class="item-sub">${show.episode_count} episode(s)</div>
+            </div>
           </div>
           <div class="item-actions">
             <button class="primary" data-action="backup-show" data-show-id="${show.id}">Backup</button>
@@ -187,12 +201,16 @@ function renderShowDetail() {
 async function toggleShowEpisodes(showId, forceReload = false) {
   const container = document.getElementById(`episodes-${showId}`);
   if (!container) return;
-  if (state.selectedShowId === showId && !forceReload) {
-    state.selectedShowId = null;
+  const showItemEl = document.querySelector(`[data-show-item="${showId}"]`);
+
+  if (state.expandedShowIds.has(showId) && !forceReload) {
+    state.expandedShowIds.delete(showId);
+    showItemEl?.classList.remove("expanded");
     container.innerHTML = "";
     return;
   }
-  state.selectedShowId = showId;
+  state.expandedShowIds.add(showId);
+  showItemEl?.classList.add("expanded");
   container.innerHTML = '<p id="show-detail-placeholder">Loading episodes...</p>';
   try {
     state.episodes = await api(`/api/shows/${showId}/episodes`);
@@ -371,7 +389,7 @@ async function openEpisodeDetail(episodeId) {
   modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", async () => {
     await runSingle(`/api/episodes/${episodeId}/backup`, "Backing up episode...");
     openEpisodeDetail(episodeId);
-    if (state.selectedShowId) toggleShowEpisodes(state.selectedShowId, true);
+    if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
   });
   modalRoot.querySelector('[data-action="restore-episode"]').addEventListener("click", async () => {
     await runSingle(`/api/episodes/${episodeId}/restore`, "Restoring chapters...");
