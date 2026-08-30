@@ -4,6 +4,7 @@ import threading
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.backup import backup_episode, backup_library, backup_show
 from app.config import DB_PATH, LIBRARIES_ROOT
@@ -26,6 +27,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("mkv_backup")
 
 app = FastAPI(title="MKV Chapter & Media Info Backup")
+
+
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Force the browser to always revalidate static assets (index.html/app.js/style.css)
+    with the server instead of relying on heuristic caching, so a rebuilt image's updated
+    frontend is picked up on the next reload instead of silently serving a stale copy."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if not request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.add_middleware(NoCacheStaticMiddleware)
 
 
 @app.on_event("startup")

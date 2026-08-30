@@ -365,23 +365,32 @@ function formatChapterTime(t) {
 const TRACK_TYPES = ["Video", "Audio", "Text"];
 
 function parseMediaInfoTracks(jsonString) {
+  let parsed;
   try {
-    const parsed = JSON.parse(jsonString);
-    const allTracks = parsed?.media?.track || [];
-    return allTracks
-      .filter((t) => TRACK_TYPES.includes(t["@type"]))
-      .map((t) => ({
-        id: t.ID ?? t.StreamOrder ?? "",
-        type: t["@type"],
-        language: t.Language || "",
-        name: t.Title || "",
-        default: t.Default === "Yes",
-        forced: t.Forced === "Yes",
-        format: t.Format || "",
-      }));
+    parsed = JSON.parse(jsonString);
   } catch (_) {
-    return null;
+    return { status: "invalid" };
   }
+
+  const rawTracks = parsed?.media?.track;
+  if (!rawTracks) {
+    // Older backups stored a plain array from mkvmerge instead of a full mediainfo report.
+    return { status: "legacy" };
+  }
+
+  const allTracks = Array.isArray(rawTracks) ? rawTracks : [rawTracks];
+  const tracks = allTracks
+    .filter((t) => TRACK_TYPES.includes(t["@type"]))
+    .map((t) => ({
+      id: t.ID ?? t.StreamOrder ?? "",
+      type: t["@type"],
+      language: t.Language || "",
+      name: t.Title || "",
+      default: t.Default === "Yes",
+      forced: t.Forced === "Yes",
+      format: t.Format || "",
+    }));
+  return { status: "ok", tracks };
 }
 
 function prettyPrintJson(jsonString) {
@@ -406,11 +415,18 @@ async function openEpisodeDetail(episodeId) {
 
   let trackSectionHtml;
   if (ep.track_metadata) {
-    const tracks = parseMediaInfoTracks(ep.track_metadata);
-    const tableRows = tracks && tracks.length
-      ? tracks
-          .map(
-            (t) => `<tr>
+    const parsedTracks = parseMediaInfoTracks(ep.track_metadata);
+    let tableRows;
+    if (parsedTracks.status === "invalid") {
+      tableRows = `<tr><td colspan="7" class="item-sub">Could not parse the stored track metadata as JSON.</td></tr>`;
+    } else if (parsedTracks.status === "legacy") {
+      tableRows = `<tr><td colspan="7" class="item-sub">This episode's track metadata was saved in an older format. Back it up again to see it here.</td></tr>`;
+    } else if (parsedTracks.tracks.length === 0) {
+      tableRows = `<tr><td colspan="7" class="item-sub">No video/audio/subtitle tracks found in the stored report.</td></tr>`;
+    } else {
+      tableRows = parsedTracks.tracks
+        .map(
+          (t) => `<tr>
               <td>${escapeHtml(String(t.id))}</td>
               <td>${escapeHtml(t.type)}</td>
               <td>${escapeHtml(t.language)}</td>
@@ -419,9 +435,9 @@ async function openEpisodeDetail(episodeId) {
               <td>${t.forced ? "yes" : "no"}</td>
               <td>${escapeHtml(t.format)}</td>
             </tr>`
-          )
-          .join("")
-      : `<tr><td colspan="7" class="item-sub">Could not parse track metadata as a table.</td></tr>`;
+        )
+        .join("");
+    }
 
     trackSectionHtml = `
       <div class="section-header">
