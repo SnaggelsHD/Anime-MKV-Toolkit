@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -9,11 +11,15 @@ from app.models import Chapters, Episode, Library, Show, TrackMetadata
 from app.restore import restore_chapters_for_episode, restore_library, restore_show
 from app.scanner import sync_episodes, sync_libraries, sync_shows
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("mkv_backup")
+
 app = FastAPI(title="MKV Chapter & Media Info Backup")
 
 
 @app.on_event("startup")
 def on_startup():
+    logger.info("Starting up: db_path=%s libraries_root=%s", DB_PATH, LIBRARIES_ROOT)
     init_db()
 
 

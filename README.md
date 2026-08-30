@@ -10,9 +10,11 @@ assumes stable filenames (e.g. as produced by TinyMediaManager).
 
 ## Status
 
-Project skeleton (Milestone 1): FastAPI backend with a health endpoint,
-running in Docker. Library scanning, database, and backup/restore are not
-implemented yet.
+Feature-complete for the core workflow: scans libraries/shows/episodes from
+disk, backs up chapters and track metadata to SQLite, restores chapters back
+into MKV files, and exposes it all through a web UI. Track metadata restore
+(re-applying track names/languages/flags) is not implemented — only chapter
+restore, per the original scope.
 
 ## Requirements
 
@@ -51,11 +53,30 @@ in the container), so it persists across container restarts.
 
 Once running, open the web UI to:
 
-- Browse libraries → shows → episodes.
+- Browse libraries → shows → episodes (episodes are grouped by season where
+  detectable from the filename or folder name).
 - Back up chapters and track metadata for a whole library, a show, or a
-  single episode.
-- View stored chapter data and track metadata per episode.
-- Restore chapters from the database back into the MKV files on disk.
+  single episode, via the "Backup" buttons at each level.
+- View stored chapter XML and a parsed track metadata table per episode by
+  clicking an episode row.
+- Restore chapters from the database back into the MKV files on disk, via
+  the "Restore" buttons at each level.
 
-(UI and these operations are implemented in later milestones — see `AGENTS.md`
-for the full plan.)
+Matching between what's on disk and what's in the database is done by
+`(show, filename)` only — files are not hashed or checksummed. Every list
+endpoint re-scans the filesystem on read, so newly added episodes show up
+without a restart.
+
+**Note on restore:** restoring rewrites the MKV file in place (remux to a
+temp file in the same folder, then atomic replace). Track metadata restore
+(re-applying languages/track names/flags) is not implemented yet — only
+chapters are restored.
+
+## Notes
+
+- No file hashing/checksums — matching is filename-based, so it assumes
+  stable filenames (e.g. from TinyMediaManager).
+- Backup/restore operations are synchronous HTTP calls; a large library
+  backup may take a while to return.
+- Logs (including per-episode backup/restore success and failure) go to
+  stdout — view them with `docker compose logs -f`.

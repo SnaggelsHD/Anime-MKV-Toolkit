@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import tempfile
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Chapters, Episode, Library, Show
 from app.scanner import sync_episodes, sync_shows
+
+logger = logging.getLogger("mkv_backup")
 
 TIMEOUT = 300
 
@@ -18,6 +21,7 @@ def restore_chapters_for_episode(db: Session, episode: Episode) -> dict:
         return {**result, "ok": False, "error": "No stored chapters for this episode"}
 
     if not os.path.isfile(episode.path):
+        logger.warning("Restore skipped, file not found: %s", episode.path)
         return {**result, "ok": False, "error": "File not found on disk"}
 
     episode_dir = os.path.dirname(episode.path)
@@ -37,9 +41,11 @@ def restore_chapters_for_episode(db: Session, episode: Episode) -> dict:
             timeout=TIMEOUT,
         )
         if proc.returncode != 0:
+            logger.error("Restore failed for %s: %s", episode.path, proc.stderr.strip())
             return {**result, "ok": False, "error": f"mkvmerge failed: {proc.stderr.strip()}"}
 
         os.replace(out_path, episode.path)
+        logger.info("Restored chapters for %s", episode.path)
         return {**result, "ok": True}
     except FileNotFoundError:
         return {**result, "ok": False, "error": "mkvmerge is not installed"}
