@@ -6,7 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
-      - /path/to/your/libraries:/libraries
+      - ./test:/libraries
     environment:
       - DB_PATH=/data/chapters.db
       - LIBRARIES_ROOT=/libraries
