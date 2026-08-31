@@ -397,9 +397,9 @@ def get_season_poster(show_id: int, season: str | None = None, db: Session = Dep
     season_dir = os.path.dirname(episode.path)
     try:
         season_num = int(season)
-        base_names = [f"season{season_num:02d}-poster", f"season{season_num}-poster"]
+        base_names = ["poster", f"season{season_num:02d}-poster", f"season{season_num}-poster"]
     except ValueError:
-        base_names = [f"season{season}-poster"]
+        base_names = ["poster", f"season{season}-poster"]
     poster_path = _find_poster(season_dir, base_names)
     if poster_path is None:
         raise HTTPException(status_code=404, detail="No poster found")

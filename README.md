@@ -124,11 +124,12 @@ Additional UI notes:
   directly, for safekeeping outside the container.
 - Long-running scan/backup/restore operations show live progress in a task
   queue widget in the bottom-right corner rather than blocking the UI.
-- Show and season rows display the TinyMediaManager-style poster artwork
-  already sitting in those folders — `poster.<ext>` in the show folder,
-  `season<NN>-poster.<ext>` in the season folder (`.jpg`/`.jpeg`/`.png`/`.webp`
-  all work). Served straight off disk, nothing is stored in a database; a
-  placeholder icon is shown wherever no matching file is found.
+- Show and season rows display the poster artwork already sitting in those
+  folders — `poster.<ext>` directly inside the show folder, and `poster.<ext>`
+  (or `season<NN>-poster.<ext>`) inside each season folder
+  (`.jpg`/`.jpeg`/`.png`/`.webp` all work). Served straight off disk, nothing
+  is stored in a database; a placeholder icon is shown wherever no matching
+  file is found.
 
 Matching between what's on disk, the scan database, and the backup database is
 done by `(library name, show name, filename)` only — files are not hashed or
