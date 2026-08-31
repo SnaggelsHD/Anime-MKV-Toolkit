@@ -188,6 +188,18 @@ def _episode_cleanup_info(cleanup_db: Session, episode: Episode) -> dict:
     }
 
 
+POSTER_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
+
+
+def _find_poster(directory: str, base_names: list[str]) -> str | None:
+    for base_name in base_names:
+        for ext in POSTER_EXTENSIONS:
+            candidate = os.path.join(directory, f"{base_name}{ext}")
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
 def _library_cleaned_count(cleanup_db: Session, library_name: str) -> int:
     cleanup_lib = cleanup_db.query(CleanupLibrary).filter(CleanupLibrary.name == library_name).first()
     if cleanup_lib is None:
@@ -352,6 +364,46 @@ def get_episode(
         "cleanup_ok": cleanup_info["cleanup_ok"],
         "cleanup_error": cleanup_info["error"],
     }
+
+
+# --- Posters --------------------------------------------------------------
+# TinyMediaManager-style artwork already sitting in the library folders:
+# poster.<ext> in the show folder, season<NN>-poster.<ext> in each season
+# folder. Served straight off disk - nothing is stored in any database.
+
+
+@app.get("/api/shows/{show_id}/poster")
+def get_show_poster(show_id: int, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    poster_path = _find_poster(show.path, ["poster"])
+    if poster_path is None:
+        raise HTTPException(status_code=404, detail="No poster found")
+    return FileResponse(poster_path)
+
+
+@app.get("/api/shows/{show_id}/season-poster")
+def get_season_poster(show_id: int, season: str | None = None, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if not season:
+        raise HTTPException(status_code=404, detail="No season specified")
+    episodes = sync_episodes(db, show)
+    episode = next((ep for ep in episodes if ep.season == season), None)
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Season not found")
+    season_dir = os.path.dirname(episode.path)
+    try:
+        season_num = int(season)
+        base_names = [f"season{season_num:02d}-poster", f"season{season_num}-poster"]
+    except ValueError:
+        base_names = [f"season{season}-poster"]
+    poster_path = _find_poster(season_dir, base_names)
+    if poster_path is None:
+        raise HTTPException(status_code=404, detail="No poster found")
+    return FileResponse(poster_path)
 
 
 @app.get("/api/jobs")

@@ -201,6 +201,23 @@ h2 {
 
 .item-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 
+.poster-thumb {
+  width: 36px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  flex-shrink: 0;
+}
+
+.season-heading-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .episodes-container {
   margin: 0.25rem 0 0.5rem 0.9rem;
   padding-left: 0.75rem;

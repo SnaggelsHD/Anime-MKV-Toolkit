@@ -16,6 +16,35 @@ function withDryRun(url) {
   return url + (url.includes("?") ? "&" : "?") + "dry_run=true";
 }
 
+const POSTER_PLACEHOLDER =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150">' +
+      '<rect width="100" height="150" rx="6" fill="#2a2e37"/>' +
+      '<circle cx="38" cy="45" r="10" fill="#4b5262"/>' +
+      '<path d="M22 100 L42 72 L58 92 L72 68 L86 100 Z" fill="#4b5262"/>' +
+      "</svg>"
+  );
+
+// Sets each poster <img data-poster-src="..."> tag's src, falling back to a
+// placeholder icon either immediately (no data-poster-src, e.g. an unsorted
+// season with no folder to look for a poster in) or if the request 404s
+// (no poster file present in that show/season folder).
+function wirePosterImages(root) {
+  root.querySelectorAll("img.poster-thumb").forEach((img) => {
+    const src = img.dataset.posterSrc;
+    if (!src) {
+      img.src = POSTER_PLACEHOLDER;
+      return;
+    }
+    img.addEventListener("error", () => {
+      img.onerror = null;
+      img.src = POSTER_PLACEHOLDER;
+    });
+    img.src = src;
+  });
+}
+
 function formatTimestamp(iso) {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -289,6 +318,7 @@ function renderShowDetail() {
         <div class="item-row" data-show-id="${show.id}">
           <div class="item-name-wrap">
             <span class="chevron">▸</span>
+            <img class="poster-thumb" data-poster-src="/api/shows/${show.id}/poster" alt="">
             <div>
               <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
               <div class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</div>
@@ -313,6 +343,7 @@ function renderShowDetail() {
     ${showsHtml || '<p id="show-detail-placeholder">No shows found in this library.</p>'}
   `;
 
+  wirePosterImages(detail);
   detail.querySelectorAll('[data-show-id]').forEach((el) => {
     if (el.classList.contains("item-row")) {
       el.addEventListener("click", () => toggleShowEpisodes(Number(el.dataset.showId)));
@@ -446,9 +477,16 @@ function renderEpisodes(showId, container) {
     const scannedCount = eps.filter((e) => e.has_scan).length;
     const backedUpCount = eps.filter((e) => e.has_backup).length;
     const cleanedCount = eps.filter((e) => e.cleanup_ok).length;
+    const seasonPosterAttr =
+      seasonKey === UNSORTED_SEASON
+        ? ""
+        : `data-poster-src="/api/shows/${showId}/season-poster${seasonQuery(seasonKey)}"`;
     html += `
       <div class="season-heading-row">
-        <span class="season-heading">${label} — ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned</span>
+        <div class="season-heading-wrap">
+          <img class="poster-thumb" ${seasonPosterAttr} alt="">
+          <span class="season-heading">${label} — ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned</span>
+        </div>
         <div class="item-actions">
           <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup" : "Backup"}</button>
@@ -476,6 +514,7 @@ function renderEpisodes(showId, container) {
     }
   }
   container.innerHTML = html;
+  wirePosterImages(container);
   container.querySelectorAll("[data-episode-id]").forEach((el) =>
     el.addEventListener("click", () => openEpisodeDetail(Number(el.dataset.episodeId)))
   );
