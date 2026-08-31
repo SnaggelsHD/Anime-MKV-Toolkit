@@ -15,7 +15,7 @@ from app.backup_db import BackupSessionLocal, get_backup_db, init_backup_db
 from app.backup_models import BackupEpisode, BackupLibrary, BackupShow
 from app.cleanup import cleanup_episode, cleanup_season, cleanup_show
 from app.cleanup_db import CleanupSessionLocal, get_cleanup_db, init_cleanup_db
-from app.cleanup_models import CleanupEpisode, CleanupLibrary, CleanupShow
+from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupSettings, CleanupShow
 from app.config import BACKUP_DB_PATH, CLEANUP_DB_PATH, DB_PATH, LIBRARIES_ROOT
 from app.db import SessionLocal, get_db, init_db
 from app.jobs import add_result, create_job, fail_job, finish_job, get_job, list_jobs
@@ -746,6 +746,98 @@ def clean_season_endpoint(show_id: int, season: str | None = None, db: Session =
     label = f'Clean up Season {season} of "{show.name}"' if season else f'Clean up Unsorted episodes of "{show.name}"'
     job_id = launch_cleanup_job(label, total, work)
     return {"job_id": job_id}
+
+
+# --- Cleanup settings: audio codec name mapping + subtitle suffixes -------
+
+
+def _codec_mapping_dict(row: CleanupCodecMapping) -> dict:
+    return {"id": row.id, "codec_key": row.codec_key, "display_name": row.display_name, "is_builtin": row.is_builtin}
+
+
+@app.get("/api/cleanup/settings/codecs")
+def list_codec_mappings(cleanup_db: Session = Depends(get_cleanup_db)):
+    rows = cleanup_db.query(CleanupCodecMapping).order_by(CleanupCodecMapping.codec_key).all()
+    return [_codec_mapping_dict(row) for row in rows]
+
+
+@app.post("/api/cleanup/settings/codecs")
+def create_codec_mapping(payload: dict, cleanup_db: Session = Depends(get_cleanup_db)):
+    codec_key = (payload.get("codec_key") or "").strip()
+    display_name = (payload.get("display_name") or "").strip()
+    if not codec_key or not display_name:
+        raise HTTPException(status_code=400, detail="codec_key and display_name are required")
+    if cleanup_db.query(CleanupCodecMapping).filter(CleanupCodecMapping.codec_key == codec_key).first():
+        raise HTTPException(status_code=400, detail=f'A mapping for "{codec_key}" already exists')
+    row = CleanupCodecMapping(codec_key=codec_key, display_name=display_name, is_builtin=False)
+    cleanup_db.add(row)
+    cleanup_db.commit()
+    return _codec_mapping_dict(row)
+
+
+@app.put("/api/cleanup/settings/codecs/{mapping_id}")
+def update_codec_mapping(mapping_id: int, payload: dict, cleanup_db: Session = Depends(get_cleanup_db)):
+    row = cleanup_db.get(CleanupCodecMapping, mapping_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+
+    display_name = (payload.get("display_name") or "").strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="display_name is required")
+
+    new_key = payload.get("codec_key")
+    if new_key is not None:
+        new_key = new_key.strip()
+        if new_key != row.codec_key:
+            if row.is_builtin:
+                raise HTTPException(status_code=400, detail="Built-in codec mappings cannot be renamed")
+            if not new_key:
+                raise HTTPException(status_code=400, detail="codec_key is required")
+            if cleanup_db.query(CleanupCodecMapping).filter(
+                CleanupCodecMapping.codec_key == new_key, CleanupCodecMapping.id != mapping_id
+            ).first():
+                raise HTTPException(status_code=400, detail=f'A mapping for "{new_key}" already exists')
+            row.codec_key = new_key
+
+    row.display_name = display_name
+    cleanup_db.commit()
+    return _codec_mapping_dict(row)
+
+
+@app.delete("/api/cleanup/settings/codecs/{mapping_id}")
+def delete_codec_mapping(mapping_id: int, cleanup_db: Session = Depends(get_cleanup_db)):
+    row = cleanup_db.get(CleanupCodecMapping, mapping_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    if row.is_builtin:
+        raise HTTPException(status_code=400, detail="Built-in codec mappings cannot be deleted")
+    cleanup_db.delete(row)
+    cleanup_db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/cleanup/settings/subtitles")
+def get_subtitle_settings(cleanup_db: Session = Depends(get_cleanup_db)):
+    settings = cleanup_db.query(CleanupSettings).first()
+    if settings is None:
+        return {"forced_suffix": "Forced", "commentary_suffix": "Commentary"}
+    return {"forced_suffix": settings.forced_suffix, "commentary_suffix": settings.commentary_suffix}
+
+
+@app.put("/api/cleanup/settings/subtitles")
+def update_subtitle_settings(payload: dict, cleanup_db: Session = Depends(get_cleanup_db)):
+    forced_suffix = (payload.get("forced_suffix") or "").strip()
+    commentary_suffix = (payload.get("commentary_suffix") or "").strip()
+    if not forced_suffix or not commentary_suffix:
+        raise HTTPException(status_code=400, detail="Both suffixes are required")
+    settings = cleanup_db.query(CleanupSettings).first()
+    if settings is None:
+        settings = CleanupSettings(id=1)
+        cleanup_db.add(settings)
+    settings.forced_suffix = forced_suffix
+    settings.commentary_suffix = commentary_suffix
+    cleanup_db.commit()
+    return {"forced_suffix": settings.forced_suffix, "commentary_suffix": settings.commentary_suffix}
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

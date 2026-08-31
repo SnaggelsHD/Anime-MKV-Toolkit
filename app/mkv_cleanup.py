@@ -26,7 +26,7 @@ LANGUAGE_NAMES = {
     "und": "und",
 }
 
-CODEC_NAMES = {
+DEFAULT_CODEC_NAMES = {
     "DTS": "DTS",
     "A_DTS": "DTS",
     "DTS-HD Master Audio": "DTS-HD MA",
@@ -93,11 +93,11 @@ def lang_name(code: str | None) -> str:
     return LANGUAGE_NAMES.get(code, code)
 
 
-def codec_name(codec: str | None) -> tuple[str, bool]:
+def codec_name(codec: str | None, codec_map: dict[str, str]) -> tuple[str, bool]:
     if not codec:
         return "unknown", True
-    if codec in CODEC_NAMES:
-        return CODEC_NAMES[codec], False
+    if codec in codec_map:
+        return codec_map[codec], False
     return codec, True
 
 
@@ -121,7 +121,12 @@ def is_commentary(props: dict[str, Any]) -> bool:
     return value in (True, 1, "1", "true", "True")
 
 
-def inspect_file(path: str) -> FilePlan:
+def inspect_file(
+    path: str,
+    codec_map: dict[str, str],
+    forced_suffix: str = "Forced",
+    commentary_suffix: str = "Commentary",
+) -> FilePlan:
     data = get_mkvmerge_json(path)
     title = os.path.splitext(os.path.basename(path))[0]
     plan = FilePlan(path=path, title=title)
@@ -156,7 +161,7 @@ def inspect_file(path: str) -> FilePlan:
         if track_type == "audio":
             selector = f"track:{overall_index}"
             codec = track.get("codec")
-            codec_display, unknown_codec = codec_name(codec)
+            codec_display, unknown_codec = codec_name(codec, codec_map)
             ch_layout = channel_layout(props.get("audio_channels"))
             commentary = is_commentary(props)
 
@@ -173,11 +178,11 @@ def inspect_file(path: str) -> FilePlan:
 
         elif track_type == "subtitles":
             selector = f"track:{overall_index}"
-            suffix = " Forced" if is_forced(props) else ""
+            suffix = f" {forced_suffix}" if is_forced(props) else ""
             commentary = is_commentary(props)
 
             if commentary:
-                new_name = f"{lang_name(language)} Commentary{suffix}"
+                new_name = f"{lang_name(language)} {commentary_suffix}{suffix}"
             else:
                 new_name = f"{lang_name(language)}{suffix}"
 
@@ -207,14 +212,19 @@ def apply_plan(plan: FilePlan) -> tuple[str, str, int]:
     return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
 
 
-def clean_file(path: str) -> dict:
+def clean_file(
+    path: str,
+    codec_map: dict[str, str],
+    forced_suffix: str = "Forced",
+    commentary_suffix: str = "Commentary",
+) -> dict:
     """Inspect and clean up one MKV file's metadata in place. Returns a
     structured result: {ok, summary, warnings, error, edits_count}."""
     if not os.path.isfile(path):
         return {"ok": False, "error": "File not found on disk", "summary": [], "warnings": [], "edits_count": 0}
 
     try:
-        plan = inspect_file(path)
+        plan = inspect_file(path, codec_map, forced_suffix, commentary_suffix)
     except MkvCleanupError as exc:
         return {"ok": False, "error": str(exc), "summary": [], "warnings": [], "edits_count": 0}
 

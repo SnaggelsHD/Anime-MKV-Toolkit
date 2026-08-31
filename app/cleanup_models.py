@@ -59,3 +59,27 @@ class CleanupResult(CleanupBase):
     error = Column(Text, nullable=True)
 
     episode = relationship("CleanupEpisode", back_populates="result")
+
+
+class CleanupCodecMapping(CleanupBase):
+    """Display name used when renaming an audio track for a given mkvmerge
+    codec string. Built-in rows (seeded from mkv_cleanup.DEFAULT_CODEC_NAMES)
+    can have their display_name edited but never their codec_key, and can't
+    be deleted; user-added rows are fully editable and deletable."""
+
+    __tablename__ = "cleanup_codec_mappings"
+
+    id = Column(Integer, primary_key=True)
+    codec_key = Column(String, unique=True, nullable=False)
+    display_name = Column(String, nullable=False)
+    is_builtin = Column(Boolean, nullable=False, default=False)
+
+
+class CleanupSettings(CleanupBase):
+    """Singleton row (id=1) holding the configurable subtitle-name suffixes."""
+
+    __tablename__ = "cleanup_settings"
+
+    id = Column(Integer, primary_key=True)
+    forced_suffix = Column(String, nullable=False, default="Forced")
+    commentary_suffix = Column(String, nullable=False, default="Commentary")

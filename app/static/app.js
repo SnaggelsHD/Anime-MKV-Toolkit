@@ -1081,6 +1081,137 @@ function initSettingsTab() {
       toast(`Failed to clear database: ${err.message}`, "error");
     }
   });
+
+  document.getElementById("add-codec-mapping").addEventListener("click", async () => {
+    const keyInput = document.getElementById("new-codec-key");
+    const nameInput = document.getElementById("new-codec-name");
+    const codec_key = keyInput.value.trim();
+    const display_name = nameInput.value.trim();
+    if (!codec_key || !display_name) {
+      toast("Both a codec identifier and a display name are required", "error");
+      return;
+    }
+    try {
+      await api("/api/cleanup/settings/codecs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codec_key, display_name }),
+      });
+      keyInput.value = "";
+      nameInput.value = "";
+      toast("Codec mapping added", "ok");
+      loadCodecMappings();
+    } catch (err) {
+      toast(`Failed to add codec mapping: ${err.message}`, "error");
+    }
+  });
+
+  document.getElementById("save-subtitle-settings").addEventListener("click", async () => {
+    const forced_suffix = document.getElementById("forced-suffix-input").value.trim();
+    const commentary_suffix = document.getElementById("commentary-suffix-input").value.trim();
+    if (!forced_suffix || !commentary_suffix) {
+      toast("Both suffixes are required", "error");
+      return;
+    }
+    try {
+      await api("/api/cleanup/settings/subtitles", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forced_suffix, commentary_suffix }),
+      });
+      toast("Subtitle naming settings saved", "ok");
+    } catch (err) {
+      toast(`Failed to save: ${err.message}`, "error");
+    }
+  });
+
+  loadCodecMappings();
+  loadSubtitleSettings();
+}
+
+async function loadCodecMappings() {
+  const container = document.getElementById("codec-mapping-table");
+  container.textContent = "Loading...";
+  try {
+    const rows = await api("/api/cleanup/settings/codecs");
+    renderCodecMappings(rows);
+  } catch (err) {
+    container.innerHTML = `<p class="item-sub">Failed to load: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderCodecMappings(rows) {
+  const container = document.getElementById("codec-mapping-table");
+  const body = rows
+    .map(
+      (row) => `
+      <tr data-codec-id="${row.id}">
+        <td>${
+          row.is_builtin
+            ? escapeHtml(row.codec_key)
+            : `<input type="text" value="${escapeHtml(row.codec_key)}" data-field="codec_key">`
+        }</td>
+        <td><input type="text" value="${escapeHtml(row.display_name)}" data-field="display_name"></td>
+        <td class="item-actions">
+          <button type="button" data-action="save-codec">Save</button>
+          ${row.is_builtin ? "" : '<button type="button" class="danger" data-action="delete-codec">Delete</button>'}
+        </td>
+      </tr>`
+    )
+    .join("");
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Codec</th><th>Display Name</th><th></th></tr></thead>
+      <tbody>${body || '<tr><td colspan="3" class="item-sub">No codec mappings yet.</td></tr>'}</tbody>
+    </table>
+  `;
+
+  container.querySelectorAll('[data-action="save-codec"]').forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const tr = btn.closest("tr");
+      const id = tr.dataset.codecId;
+      const displayInput = tr.querySelector('[data-field="display_name"]');
+      const keyInput = tr.querySelector('[data-field="codec_key"]');
+      const payload = { display_name: displayInput.value.trim() };
+      if (keyInput) payload.codec_key = keyInput.value.trim();
+      try {
+        await api(`/api/cleanup/settings/codecs/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        toast("Saved", "ok");
+        loadCodecMappings();
+      } catch (err) {
+        toast(`Failed to save: ${err.message}`, "error");
+      }
+    })
+  );
+  container.querySelectorAll('[data-action="delete-codec"]').forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const tr = btn.closest("tr");
+      const id = tr.dataset.codecId;
+      const codecLabel = tr.children[0].textContent.trim();
+      if (!confirm(`Delete the codec mapping for "${codecLabel}"?`)) return;
+      try {
+        await api(`/api/cleanup/settings/codecs/${id}`, { method: "DELETE" });
+        toast("Codec mapping deleted", "ok");
+        loadCodecMappings();
+      } catch (err) {
+        toast(`Failed to delete: ${err.message}`, "error");
+      }
+    })
+  );
+}
+
+async function loadSubtitleSettings() {
+  try {
+    const settings = await api("/api/cleanup/settings/subtitles");
+    document.getElementById("forced-suffix-input").value = settings.forced_suffix;
+    document.getElementById("commentary-suffix-input").value = settings.commentary_suffix;
+  } catch (err) {
+    toast(`Failed to load subtitle naming settings: ${err.message}`, "error");
+  }
 }
 
 function escapeHtml(str) {

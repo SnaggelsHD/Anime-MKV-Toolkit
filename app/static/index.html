@@ -54,6 +54,35 @@
     </section>
 
     <section class="panel">
+      <h2>Cleanup — Audio Codec Names</h2>
+      <p class="item-sub">
+        Display names used when the Cleanup tab renames audio tracks. Built-in codec
+        identifiers can't be renamed or removed, but you can change what they're displayed
+        as. Add your own for codecs not listed here.
+      </p>
+      <div id="codec-mapping-table">Loading...</div>
+      <div class="settings-actions" style="margin-top:0.75rem;">
+        <input type="text" id="new-codec-key" placeholder="Codec identifier (e.g. Vorbis)">
+        <input type="text" id="new-codec-name" placeholder="Display name (e.g. Vorbis Audio)">
+        <button type="button" id="add-codec-mapping">Add codec mapping</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Cleanup — Subtitle Naming</h2>
+      <p class="item-sub">Text appended to subtitle track names for forced and commentary tracks.</p>
+      <div class="settings-actions">
+        <label>Forced suffix
+          <input type="text" id="forced-suffix-input">
+        </label>
+        <label>Commentary suffix
+          <input type="text" id="commentary-suffix-input">
+        </label>
+        <button type="button" id="save-subtitle-settings">Save</button>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>Export</h2>
       <p class="item-sub">Download the backup database file (backup.db) for safekeeping.</p>
       <a class="button-link" id="export-backup-link" href="/api/backup/export" download="backup.db">Export backup database</a>

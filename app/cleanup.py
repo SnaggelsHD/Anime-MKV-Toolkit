@@ -4,12 +4,20 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.cleanup_models import CleanupEpisode, CleanupLibrary, CleanupResult, CleanupShow
+from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupResult, CleanupShow, CleanupSettings
 from app.mkv_cleanup import clean_file
 from app.models import Episode, Show
 from app.scanner import sync_episodes
 
 logger = logging.getLogger("mkv_backup")
+
+
+def _load_cleanup_config(cleanup_db: Session) -> tuple[dict[str, str], str, str]:
+    codec_map = {row.codec_key: row.display_name for row in cleanup_db.query(CleanupCodecMapping).all()}
+    settings = cleanup_db.query(CleanupSettings).first()
+    forced_suffix = settings.forced_suffix if settings else "Forced"
+    commentary_suffix = settings.commentary_suffix if settings else "Commentary"
+    return codec_map, forced_suffix, commentary_suffix
 
 
 def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> CleanupEpisode:
@@ -54,7 +62,8 @@ def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> Cle
 
 
 def cleanup_episode(cleanup_db: Session, episode: Episode) -> dict:
-    result = clean_file(episode.path)
+    codec_map, forced_suffix, commentary_suffix = _load_cleanup_config(cleanup_db)
+    result = clean_file(episode.path, codec_map, forced_suffix, commentary_suffix)
 
     cleanup_ep = _get_or_create_cleanup_episode(cleanup_db, episode)
     existing = cleanup_db.query(CleanupResult).filter(CleanupResult.episode_id == cleanup_ep.id).first()
