@@ -111,12 +111,14 @@ temp file in the same folder, then atomic replace). Track metadata restore
 (re-applying languages/track names/flags) is not implemented yet — only
 chapters are restored.
 
-## Metadata cleanup (Cleanup tab)
+## Metadata cleanup
 
 A separate feature from scan/backup/restore, with its own database
-(`cleanup.db`) and its own tab in the UI. It normalizes track languages/names
-and strips noisy container metadata from anime MKV rips — the same rules a
-prior standalone `mkv_cleanup.py` script applied, now built into the app:
+(`cleanup.db`), surfaced through **Clean**/**Re-clean** buttons alongside the
+Scan/Backup/Restore buttons at every level of the Library tab (library, show,
+season, episode). It normalizes track languages/names and strips noisy
+container metadata from anime MKV rips — the same rules a prior standalone
+`mkv_cleanup.py` script applied, now built into the app:
 
 - Sets the container title to the filename, and clears the `date`,
   `writing-application`, and `muxing-application` tags.
@@ -137,13 +139,15 @@ editable and deletable. Changes take effect on the next cleanup run — no
 restart needed.
 
 Cleanup works directly on the MKV file via `mkvpropedit` (fast in-place
-metadata edit, no remux) and is independent of scan/backup — it doesn't
-require the episode to have been scanned first, and never touches the scan
-or backup databases. Run it per episode, season, or show from the Cleanup
-tab; each already-cleaned scope shows a **Re-clean** button that confirms
-before overwriting, and the episode detail view shows a result table of
-every field that was changed, plus the last-cleaned timestamp and any
-warnings or errors — replacing the original script's console log output.
+metadata edit, no remux) and doesn't require the episode to have been scanned
+first, though it does trigger an automatic rescan immediately afterward so
+the scan database (and the episode detail view's Track Metadata table) stays
+in sync with the file's new track names/languages — no manual rescan needed.
+It never touches the backup database. Run it per episode, season, show, or
+library; each already-cleaned scope shows a **Re-clean** button that confirms
+before overwriting. Episode rows show a third **cleaned** indicator alongside
+**scanned** and **backed up**, and the episode detail view shows the
+last-cleaned timestamp plus any error inline.
 
 ## Notes
 

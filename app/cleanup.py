@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupResult, CleanupShow, CleanupSettings
 from app.mkv_cleanup import clean_file
-from app.models import Episode, Show
-from app.scanner import sync_episodes
+from app.models import Episode, Library, Show
+from app.scan import scan_episode
+from app.scanner import sync_episodes, sync_shows
 
 logger = logging.getLogger("mkv_backup")
 
@@ -61,7 +62,7 @@ def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> Cle
     return cleanup_episode
 
 
-def cleanup_episode(cleanup_db: Session, episode: Episode) -> dict:
+def cleanup_episode(scan_db: Session, cleanup_db: Session, episode: Episode) -> dict:
     codec_map, forced_suffix, commentary_suffix = _load_cleanup_config(cleanup_db)
     result = clean_file(episode.path, codec_map, forced_suffix, commentary_suffix)
 
@@ -80,6 +81,13 @@ def cleanup_episode(cleanup_db: Session, episode: Episode) -> dict:
 
     if result["ok"]:
         logger.info("Cleaned up %s (%d edits)", episode.path, result["edits_count"])
+        # Cleanup rewrites track names/languages/flags, which the scan database's
+        # stored mediainfo snapshot would otherwise keep showing as stale until an
+        # explicit rescan. Re-scan immediately so the UI reflects the change live.
+        try:
+            scan_episode(scan_db, episode)
+        except Exception:
+            logger.exception("Post-cleanup rescan failed for %s", episode.path)
     else:
         logger.error("Cleanup failed for %s: %s", episode.path, result["error"])
 
@@ -95,7 +103,7 @@ def cleanup_show(scan_db: Session, cleanup_db: Session, show: Show, on_result=No
     episodes = sync_episodes(scan_db, show)
     results = []
     for ep in episodes:
-        result = cleanup_episode(cleanup_db, ep)
+        result = cleanup_episode(scan_db, cleanup_db, ep)
         results.append(result)
         if on_result:
             on_result(result)
@@ -108,8 +116,16 @@ def cleanup_season(scan_db: Session, cleanup_db: Session, show: Show, season: st
     for ep in episodes:
         if ep.season != season:
             continue
-        result = cleanup_episode(cleanup_db, ep)
+        result = cleanup_episode(scan_db, cleanup_db, ep)
         results.append(result)
         if on_result:
             on_result(result)
+    return results
+
+
+def cleanup_library(scan_db: Session, cleanup_db: Session, library: Library, on_result=None) -> list[dict]:
+    shows = sync_shows(scan_db, library)
+    results = []
+    for show in shows:
+        results.extend(cleanup_show(scan_db, cleanup_db, show, on_result=on_result))
     return results

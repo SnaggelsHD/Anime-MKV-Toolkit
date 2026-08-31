@@ -11,7 +11,6 @@
     <h1>MKV Chapter & Media Info Backup</h1>
     <nav class="tabs">
       <button type="button" class="tab-btn active" data-tab="library">Library</button>
-      <button type="button" class="tab-btn" data-tab="cleanup">Cleanup</button>
       <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     </nav>
     <label class="theme-switch" title="Toggle dark mode">
@@ -26,15 +25,6 @@
     </section>
     <section class="panel" id="show-detail">
       <p id="show-detail-placeholder">Select a library to see its shows.</p>
-    </section>
-  </main>
-  <main id="view-cleanup" style="display:none;">
-    <section class="panel">
-      <h2>Libraries</h2>
-      <div id="cleanup-library-list">Loading...</div>
-    </section>
-    <section class="panel" id="cleanup-show-detail">
-      <p id="cleanup-show-detail-placeholder">Select a library to see its shows.</p>
     </section>
   </main>
   <main id="view-settings" style="display:none;">
@@ -56,7 +46,7 @@
     <section class="panel">
       <h2>Cleanup — Audio Codec Names</h2>
       <p class="item-sub">
-        Display names used when the Cleanup tab renames audio tracks. Built-in codec
+        Display names used when the "Clean" action renames audio tracks. Built-in codec
         identifiers can't be renamed or removed, but you can change what they're displayed
         as. Add your own for codecs not listed here.
       </p>
