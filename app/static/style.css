@@ -133,7 +133,8 @@ main {
   margin: 0 auto;
 }
 
-#view-library {
+#view-library,
+#view-cleanup {
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 1rem;

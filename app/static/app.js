@@ -741,13 +741,296 @@ function closeModal() {
   document.getElementById("modal-root").innerHTML = "";
 }
 
+// --- Cleanup tab -----------------------------------------------------------
+// Mirrors the Library tab's browsing structure but talks to the separate
+// /api/cleanup/* endpoints and its own state, so it can't interfere with the
+// scan/backup/restore code above.
+
+const cleanupState = {
+  libraries: [],
+  selectedLibraryId: null,
+  shows: [],
+  expandedShowIds: new Set(),
+  episodes: [],
+};
+
+async function loadCleanupLibraries() {
+  const list = document.getElementById("cleanup-library-list");
+  list.textContent = "Loading...";
+  try {
+    cleanupState.libraries = await api("/api/cleanup/libraries");
+  } catch (err) {
+    list.textContent = "Failed to load libraries.";
+    toast(`Failed to load libraries: ${err.message}`, "error");
+    return;
+  }
+  renderCleanupLibraries();
+}
+
+function renderCleanupLibraries() {
+  const list = document.getElementById("cleanup-library-list");
+  list.innerHTML = "";
+  if (cleanupState.libraries.length === 0) {
+    list.innerHTML = '<p id="cleanup-show-detail-placeholder">No libraries found under the mounted /libraries path.</p>';
+    return;
+  }
+  for (const lib of cleanupState.libraries) {
+    const div = document.createElement("div");
+    div.className = `library-item${lib.id === cleanupState.selectedLibraryId ? " selected" : ""}`;
+    div.innerHTML = `
+      <div class="item-row" data-role="select-cleanup-library">
+        <div class="item-name-wrap">
+          <span class="chevron">▸</span>
+          <div>
+            <div class="item-name">${escapeHtml(lib.name)}${lib.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+            <div class="item-sub">${escapeHtml(lib.path)}</div>
+            <div class="item-sub">${lib.show_count} show(s) • ${lib.cleaned_count} cleaned</div>
+          </div>
+        </div>
+      </div>
+    `;
+    div.querySelector('[data-role="select-cleanup-library"]').addEventListener("click", () => selectCleanupLibrary(lib.id));
+    list.appendChild(div);
+  }
+}
+
+async function selectCleanupLibrary(libraryId) {
+  if (cleanupState.selectedLibraryId !== libraryId) {
+    cleanupState.expandedShowIds.clear();
+  }
+  cleanupState.selectedLibraryId = libraryId;
+  renderCleanupLibraries();
+  const detail = document.getElementById("cleanup-show-detail");
+  detail.innerHTML = '<p id="cleanup-show-detail-placeholder">Loading shows...</p>';
+  try {
+    cleanupState.shows = await api(`/api/cleanup/libraries/${libraryId}/shows`);
+  } catch (err) {
+    detail.innerHTML = `<p id="cleanup-show-detail-placeholder">Failed to load shows: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  renderCleanupShowDetail();
+  for (const showId of Array.from(cleanupState.expandedShowIds)) {
+    if (cleanupState.shows.some((s) => s.id === showId)) {
+      toggleCleanupShowEpisodes(showId, true);
+    }
+  }
+}
+
+function renderCleanupShowDetail() {
+  const detail = document.getElementById("cleanup-show-detail");
+  const lib = cleanupState.libraries.find((l) => l.id === cleanupState.selectedLibraryId);
+  if (!lib) return;
+
+  const showsHtml = cleanupState.shows
+    .map(
+      (show) => `
+      <div class="show-item${cleanupState.expandedShowIds.has(show.id) ? " expanded" : ""}" data-cleanup-show-item="${show.id}">
+        <div class="item-row" data-cleanup-show-id="${show.id}">
+          <div class="item-name-wrap">
+            <span class="chevron">▸</span>
+            <div>
+              <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+              <div class="item-sub">${show.episode_count} episode(s) • ${show.cleaned_count} cleaned</div>
+            </div>
+          </div>
+          <div class="item-actions">
+            <button class="primary" data-action="clean-show" data-show-id="${show.id}">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+          </div>
+        </div>
+        <div class="episodes-container" id="cleanup-episodes-${show.id}"></div>
+      </div>`
+    )
+    .join("");
+
+  detail.innerHTML = `
+    <h2>${escapeHtml(lib.name)} — Shows</h2>
+    ${showsHtml || '<p id="cleanup-show-detail-placeholder">No shows found in this library.</p>'}
+  `;
+
+  detail.querySelectorAll('[data-cleanup-show-id]').forEach((el) => {
+    if (el.classList.contains("item-row")) {
+      el.addEventListener("click", () => toggleCleanupShowEpisodes(Number(el.dataset.cleanupShowId)));
+    }
+  });
+  detail.querySelectorAll('[data-action="clean-show"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = Number(btn.dataset.showId);
+      const show = cleanupState.shows.find((s) => s.id === id);
+      if (
+        show.cleaned_count > 0 &&
+        !confirm(`Re-clean up all episodes in "${show.name}"? This rewrites track languages/names and container metadata in every MKV file in this show.`)
+      ) {
+        return;
+      }
+      startJob(`/api/cleanup/shows/${id}/clean`, () =>
+        selectCleanupLibrary(cleanupState.selectedLibraryId).then(() => toggleCleanupShowEpisodes(id, true))
+      );
+    })
+  );
+}
+
+async function toggleCleanupShowEpisodes(showId, forceReload = false) {
+  const container = document.getElementById(`cleanup-episodes-${showId}`);
+  if (!container) return;
+  const showItemEl = document.querySelector(`[data-cleanup-show-item="${showId}"]`);
+
+  if (cleanupState.expandedShowIds.has(showId) && !forceReload) {
+    cleanupState.expandedShowIds.delete(showId);
+    showItemEl?.classList.remove("expanded");
+    container.innerHTML = "";
+    return;
+  }
+  cleanupState.expandedShowIds.add(showId);
+  showItemEl?.classList.add("expanded");
+  container.innerHTML = '<p id="cleanup-show-detail-placeholder">Loading episodes...</p>';
+  try {
+    cleanupState.episodes = await api(`/api/cleanup/shows/${showId}/episodes`);
+  } catch (err) {
+    container.innerHTML = `<p id="cleanup-show-detail-placeholder">Failed to load episodes: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  renderCleanupEpisodes(showId, container);
+}
+
+function renderCleanupEpisodes(showId, container) {
+  if (cleanupState.episodes.length === 0) {
+    container.innerHTML = '<p id="cleanup-show-detail-placeholder">No episodes found.</p>';
+    return;
+  }
+
+  const bySeason = new Map();
+  for (const ep of cleanupState.episodes) {
+    const key = ep.season || UNSORTED_SEASON;
+    if (!bySeason.has(key)) bySeason.set(key, []);
+    bySeason.get(key).push(ep);
+  }
+
+  let html = "";
+  for (const [seasonKey, eps] of bySeason) {
+    const label = seasonKey === UNSORTED_SEASON ? "Unsorted" : `Season ${escapeHtml(seasonKey)}`;
+    const cleanedCount = eps.filter((e) => e.cleanup_ok).length;
+    html += `
+      <div class="season-heading-row">
+        <span class="season-heading">${label} — ${eps.length} eps, ${cleanedCount} cleaned</span>
+        <div class="item-actions">
+          <button class="primary" data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean" : "Clean"}</button>
+        </div>
+      </div>`;
+    for (const ep of eps) {
+      let statusLabel;
+      if (!ep.has_cleanup) statusLabel = '<span class="flag-missing">not cleaned ✗</span>';
+      else if (ep.cleanup_ok) statusLabel = '<span class="flag-ok">cleaned ✓</span>';
+      else statusLabel = '<span class="flag-missing">cleanup failed ✗</span>';
+      html += `
+        <div class="episode-row" data-cleanup-episode-id="${ep.id}">
+          <div class="episode-name">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+          <div class="flags">${statusLabel}</div>
+        </div>`;
+    }
+  }
+  container.innerHTML = html;
+  container.querySelectorAll("[data-cleanup-episode-id]").forEach((el) =>
+    el.addEventListener("click", () => openCleanupEpisodeDetail(Number(el.dataset.cleanupEpisodeId)))
+  );
+  container.querySelectorAll('[data-action="clean-season"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      if (
+        Number(btn.dataset.cleanedCount) > 0 &&
+        !confirm(`Re-clean up ${label}? This rewrites track languages/names and container metadata in every MKV file in this season.`)
+      ) {
+        return;
+      }
+      startJob(`/api/cleanup/shows/${showId}/season/clean${seasonQuery(btn.dataset.season)}`, () => toggleCleanupShowEpisodes(showId, true));
+    })
+  );
+}
+
+async function openCleanupEpisodeDetail(episodeId) {
+  const modalRoot = document.getElementById("modal-root");
+  modalRoot.innerHTML = '<div class="modal-backdrop"><div class="modal">Loading...</div></div>';
+  let ep;
+  try {
+    ep = await api(`/api/cleanup/episodes/${episodeId}`);
+  } catch (err) {
+    toast(`Failed to load episode: ${err.message}`, "error");
+    modalRoot.innerHTML = "";
+    return;
+  }
+
+  let resultHtml;
+  if (!ep.has_cleanup) {
+    resultHtml = '<p class="item-sub">This episode has not been cleaned up yet.</p>';
+  } else if (!ep.cleanup_ok) {
+    resultHtml = `<p class="item-sub" style="color:var(--danger);">Cleanup failed: ${escapeHtml(ep.error || "unknown error")}</p>`;
+  } else {
+    const rows = ep.summary
+      .map((line) => {
+        const idx = line.indexOf(" -> ");
+        const field = idx === -1 ? line : line.slice(0, idx);
+        const value = idx === -1 ? "" : line.slice(idx + 4);
+        return `<tr><td>${escapeHtml(field)}</td><td>${escapeHtml(value) || "<em>cleared</em>"}</td></tr>`;
+      })
+      .join("");
+    const warningsHtml = ep.warnings.length
+      ? `<h2 style="margin-top:1rem;">Warnings</h2><ul>${ep.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>`
+      : "";
+    resultHtml = `
+      <table>
+        <thead><tr><th>Field</th><th>New Value</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${warningsHtml}
+    `;
+  }
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" id="modal-backdrop">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h3>
+          <button data-action="close-modal">Close</button>
+        </div>
+        <p class="item-sub">${escapeHtml(ep.path)}</p>
+        <p class="item-sub">Last cleaned: ${escapeHtml(formatTimestamp(ep.cleaned_at))}</p>
+        <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
+          <button class="primary" data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
+        </div>
+        <h2 style="margin-top:0;">Result</h2>
+        ${resultHtml}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modal-backdrop").addEventListener("click", (e) => {
+    if (e.target.id === "modal-backdrop") closeModal();
+  });
+  modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
+  modalRoot.querySelector('[data-action="clean-episode"]').addEventListener("click", () => {
+    if (
+      ep.has_cleanup &&
+      !confirm(`Re-clean up "${ep.filename}"? This rewrites track languages/names and container metadata in the file on disk.`)
+    ) {
+      return;
+    }
+    startJob(`/api/cleanup/episodes/${episodeId}/clean`, () => {
+      openCleanupEpisodeDetail(episodeId);
+      if (cleanupState.expandedShowIds.has(ep.show_id)) toggleCleanupShowEpisodes(ep.show_id, true);
+    });
+  });
+}
+
 function initTabs() {
   const buttons = document.querySelectorAll(".tab-btn");
+  const viewIds = { library: "view-library", cleanup: "view-cleanup", settings: "view-settings" };
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
       buttons.forEach((b) => b.classList.toggle("active", b === btn));
-      document.getElementById("view-library").style.display = btn.dataset.tab === "library" ? "" : "none";
-      document.getElementById("view-settings").style.display = btn.dataset.tab === "settings" ? "" : "none";
+      for (const [tab, id] of Object.entries(viewIds)) {
+        document.getElementById(id).style.display = btn.dataset.tab === tab ? "" : "none";
+      }
     });
   });
 }
@@ -812,4 +1095,5 @@ initTheme();
 initTabs();
 initSettingsTab();
 loadLibraries();
+loadCleanupLibraries();
 resumeActiveJobs();

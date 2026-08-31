@@ -60,6 +60,9 @@ Two separate SQLite databases live under `./data` on the host (mounted to
   what restore reads from, and what "Export backup database" in Settings
   downloads. Override its path with the `BACKUP_DB_PATH` environment variable
   if needed (defaults to `/data/backup.db`).
+- `cleanup.db` — tracks metadata cleanup results (see below), completely
+  independent of the other two. Override with `CLEANUP_DB_PATH` (defaults to
+  `/data/cleanup.db`).
 
 ## Using the UI
 
@@ -107,6 +110,33 @@ checksummed.
 temp file in the same folder, then atomic replace). Track metadata restore
 (re-applying languages/track names/flags) is not implemented yet — only
 chapters are restored.
+
+## Metadata cleanup (Cleanup tab)
+
+A separate feature from scan/backup/restore, with its own database
+(`cleanup.db`) and its own tab in the UI. It normalizes track languages/names
+and strips noisy container metadata from anime MKV rips — the same rules a
+prior standalone `mkv_cleanup.py` script applied, now built into the app:
+
+- Sets the container title to the filename, and clears the `date`,
+  `writing-application`, and `muxing-application` tags.
+- Forces the **first track** in the file to `language=jpn` and clears its
+  name (matches the original script's behavior for typical Japanese-audio-
+  first anime rips — this applies regardless of that track's actual type).
+- Sets every video track's default flag.
+- Renames every audio track to `"<Language> [Commentary] <Codec> <Channels>"`
+  (e.g. `"Japanese AAC 2.0"`, `"English Commentary Dolby Digital 5.1"`) and
+  every subtitle track to `"<Language> [Commentary][ Forced]"`.
+- Flags unrecognized audio codecs as warnings without failing the cleanup.
+
+Cleanup works directly on the MKV file via `mkvpropedit` (fast in-place
+metadata edit, no remux) and is independent of scan/backup — it doesn't
+require the episode to have been scanned first, and never touches the scan
+or backup databases. Run it per episode, season, or show from the Cleanup
+tab; each already-cleaned scope shows a **Re-clean** button that confirms
+before overwriting, and the episode detail view shows a result table of
+every field that was changed, plus the last-cleaned timestamp and any
+warnings or errors — replacing the original script's console log output.
 
 ## Notes
 

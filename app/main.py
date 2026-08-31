@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import threading
@@ -12,7 +13,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.backup import backup_episode, backup_library, backup_season, backup_show
 from app.backup_db import BackupSessionLocal, get_backup_db, init_backup_db
 from app.backup_models import BackupEpisode, BackupLibrary, BackupShow
-from app.config import BACKUP_DB_PATH, DB_PATH, LIBRARIES_ROOT
+from app.cleanup import cleanup_episode, cleanup_season, cleanup_show
+from app.cleanup_db import CleanupSessionLocal, get_cleanup_db, init_cleanup_db
+from app.cleanup_models import CleanupEpisode, CleanupLibrary, CleanupShow
+from app.config import BACKUP_DB_PATH, CLEANUP_DB_PATH, DB_PATH, LIBRARIES_ROOT
 from app.db import SessionLocal, get_db, init_db
 from app.jobs import add_result, create_job, fail_job, finish_job, get_job, list_jobs
 from app.maintenance import (
@@ -55,10 +59,15 @@ app.add_middleware(NoCacheStaticMiddleware)
 @app.on_event("startup")
 def on_startup():
     logger.info(
-        "Starting up: db_path=%s backup_db_path=%s libraries_root=%s", DB_PATH, BACKUP_DB_PATH, LIBRARIES_ROOT
+        "Starting up: db_path=%s backup_db_path=%s cleanup_db_path=%s libraries_root=%s",
+        DB_PATH,
+        BACKUP_DB_PATH,
+        CLEANUP_DB_PATH,
+        LIBRARIES_ROOT,
     )
     init_db()
     init_backup_db()
+    init_cleanup_db()
 
 
 def launch_job(label: str, total: int, work) -> str:
@@ -80,6 +89,29 @@ def launch_job(label: str, total: int, work) -> str:
         finally:
             scan_db.close()
             backup_db.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    return job.id
+
+
+def launch_cleanup_job(label: str, total: int, work) -> str:
+    """Like launch_job, but for cleanup jobs: gives `work(scan_db, cleanup_db, on_result)`
+    its own scan + cleanup DB sessions. Kept separate from launch_job so the existing
+    scan/backup/restore endpoints above are untouched by this feature."""
+    job = create_job(label, total)
+
+    def run():
+        scan_db = SessionLocal()
+        cleanup_db = CleanupSessionLocal()
+        try:
+            work(scan_db, cleanup_db, lambda result: add_result(job.id, result))
+            finish_job(job.id)
+        except Exception as exc:
+            logger.exception('Job failed: "%s"', label)
+            fail_job(job.id, str(exc))
+        finally:
+            scan_db.close()
+            cleanup_db.close()
 
     threading.Thread(target=run, daemon=True).start()
     return job.id
@@ -131,12 +163,56 @@ def _episode_backup_content(backup_db: Session, episode: Episode) -> dict:
     }
 
 
+def _cleanup_episode_row(cleanup_db: Session, library_name: str, show_name: str, filename: str) -> CleanupEpisode | None:
+    return (
+        cleanup_db.query(CleanupEpisode)
+        .join(CleanupShow, CleanupEpisode.show_id == CleanupShow.id)
+        .join(CleanupLibrary, CleanupShow.library_id == CleanupLibrary.id)
+        .filter(
+            CleanupLibrary.name == library_name,
+            CleanupShow.name == show_name,
+            CleanupEpisode.filename == filename,
+        )
+        .first()
+    )
+
+
+def _episode_cleanup_info(cleanup_db: Session, episode: Episode) -> dict:
+    cleanup_ep = _cleanup_episode_row(cleanup_db, episode.show.library.name, episode.show.name, episode.filename)
+    if cleanup_ep is None or cleanup_ep.result is None:
+        return {"has_cleanup": False, "cleaned_at": None, "cleanup_ok": None}
+    return {"has_cleanup": True, "cleaned_at": cleanup_ep.result.cleaned_at, "cleanup_ok": cleanup_ep.result.ok}
+
+
+def _episode_cleanup_detail(cleanup_db: Session, episode: Episode) -> dict:
+    cleanup_ep = _cleanup_episode_row(cleanup_db, episode.show.library.name, episode.show.name, episode.filename)
+    if cleanup_ep is None or cleanup_ep.result is None:
+        return {
+            "has_cleanup": False,
+            "cleaned_at": None,
+            "cleanup_ok": None,
+            "summary": [],
+            "warnings": [],
+            "error": None,
+        }
+    result = cleanup_ep.result
+    return {
+        "has_cleanup": True,
+        "cleaned_at": result.cleaned_at,
+        "cleanup_ok": result.ok,
+        "summary": json.loads(result.summary_json) if result.summary_json else [],
+        "warnings": json.loads(result.warnings_json) if result.warnings_json else [],
+        "error": result.error,
+    }
+
+
 @app.get("/api/health")
 def health():
     return {
         "status": "ok",
         "db_path": DB_PATH,
         "backup_db_path": BACKUP_DB_PATH,
+        "cleanup_db_path": CLEANUP_DB_PATH,
         "libraries_root": LIBRARIES_ROOT,
     }
 
@@ -513,6 +589,163 @@ def export_backup_endpoint():
         filename="backup.db",
         background=BackgroundTask(lambda: os.remove(tmp_path)),
     )
+
+
+# --- Cleanup (metadata normalization) --------------------------------------
+#
+# Entirely separate read/write paths from scan/backup/restore above: its own
+# database (cleanup.db), its own job launcher, and it never touches the scan
+# or backup databases. Shares only the read-only library/show/episode
+# discovery already used everywhere else (sync_libraries/sync_shows/
+# sync_episodes), which has no side effects on backup data.
+
+
+@app.get("/api/cleanup/libraries")
+def list_cleanup_libraries(db: Session = Depends(get_db), cleanup_db: Session = Depends(get_cleanup_db)):
+    libraries = sync_libraries(db, LIBRARIES_ROOT)
+    result = []
+    for lib in libraries:
+        shows = sync_shows(db, lib)
+        cleanup_lib = cleanup_db.query(CleanupLibrary).filter(CleanupLibrary.name == lib.name).first()
+        cleaned_count = 0
+        if cleanup_lib is not None:
+            for cleanup_show_row in cleanup_lib.shows:
+                cleaned_count += sum(1 for ce in cleanup_show_row.episodes if ce.result is not None and ce.result.ok)
+        result.append(
+            {
+                "id": lib.id,
+                "name": lib.name,
+                "path": lib.path,
+                "missing": lib.missing,
+                "show_count": len(shows),
+                "cleaned_count": cleaned_count,
+            }
+        )
+    return result
+
+
+@app.get("/api/cleanup/libraries/{library_id}/shows")
+def list_cleanup_shows(library_id: int, db: Session = Depends(get_db), cleanup_db: Session = Depends(get_cleanup_db)):
+    library = db.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="Library not found")
+    shows = sync_shows(db, library)
+    cleanup_lib = cleanup_db.query(CleanupLibrary).filter(CleanupLibrary.name == library.name).first()
+
+    result = []
+    for show in shows:
+        episodes = sync_episodes(db, show)
+        cleaned_count = 0
+        if cleanup_lib is not None:
+            cleanup_show_row = (
+                cleanup_db.query(CleanupShow)
+                .filter(CleanupShow.library_id == cleanup_lib.id, CleanupShow.name == show.name)
+                .first()
+            )
+            if cleanup_show_row is not None:
+                cleaned_count = sum(1 for ce in cleanup_show_row.episodes if ce.result is not None and ce.result.ok)
+        result.append(
+            {
+                "id": show.id,
+                "name": show.name,
+                "path": show.path,
+                "missing": show.missing,
+                "episode_count": len(episodes),
+                "cleaned_count": cleaned_count,
+            }
+        )
+    return result
+
+
+@app.get("/api/cleanup/shows/{show_id}/episodes")
+def list_cleanup_episodes(show_id: int, db: Session = Depends(get_db), cleanup_db: Session = Depends(get_cleanup_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    episodes = sync_episodes(db, show)
+    result = []
+    for ep in episodes:
+        info = _episode_cleanup_info(cleanup_db, ep)
+        result.append(
+            {
+                "id": ep.id,
+                "filename": ep.filename,
+                "path": ep.path,
+                "season": ep.season,
+                "episode": ep.episode,
+                "missing": ep.missing,
+                "has_cleanup": info["has_cleanup"],
+                "cleaned_at": info["cleaned_at"].isoformat() if info["cleaned_at"] else None,
+                "cleanup_ok": info["cleanup_ok"],
+            }
+        )
+    return result
+
+
+@app.get("/api/cleanup/episodes/{episode_id}")
+def get_cleanup_episode(episode_id: int, db: Session = Depends(get_db), cleanup_db: Session = Depends(get_cleanup_db)):
+    ep = db.get(Episode, episode_id)
+    if ep is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    detail = _episode_cleanup_detail(cleanup_db, ep)
+    return {
+        "id": ep.id,
+        "filename": ep.filename,
+        "path": ep.path,
+        "season": ep.season,
+        "episode": ep.episode,
+        "show_id": ep.show_id,
+        "missing": ep.missing,
+        "has_cleanup": detail["has_cleanup"],
+        "cleaned_at": detail["cleaned_at"].isoformat() if detail["cleaned_at"] else None,
+        "cleanup_ok": detail["cleanup_ok"],
+        "summary": detail["summary"],
+        "warnings": detail["warnings"],
+        "error": detail["error"],
+    }
+
+
+@app.post("/api/cleanup/episodes/{episode_id}/clean")
+def clean_episode_endpoint(episode_id: int, db: Session = Depends(get_db)):
+    episode = db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    def work(scan_db, cleanup_db, on_result):
+        on_result(cleanup_episode(cleanup_db, scan_db.get(Episode, episode_id)))
+
+    job_id = launch_cleanup_job(f"Clean up {episode.filename}", 1, work)
+    return {"job_id": job_id}
+
+
+@app.post("/api/cleanup/shows/{show_id}/clean")
+def clean_show_endpoint(show_id: int, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    total = len(sync_episodes(db, show))
+
+    def work(scan_db, cleanup_db, on_result):
+        cleanup_show(scan_db, cleanup_db, scan_db.get(Show, show_id), on_result=on_result)
+
+    job_id = launch_cleanup_job(f'Clean up "{show.name}"', total, work)
+    return {"job_id": job_id}
+
+
+@app.post("/api/cleanup/shows/{show_id}/season/clean")
+def clean_season_endpoint(show_id: int, season: str | None = None, db: Session = Depends(get_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    episodes = sync_episodes(db, show)
+    total = sum(1 for ep in episodes if ep.season == season)
+
+    def work(scan_db, cleanup_db, on_result):
+        cleanup_season(scan_db, cleanup_db, scan_db.get(Show, show_id), season, on_result=on_result)
+
+    label = f'Clean up Season {season} of "{show.name}"' if season else f'Clean up Unsorted episodes of "{show.name}"'
+    job_id = launch_cleanup_job(label, total, work)
+    return {"job_id": job_id}
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
