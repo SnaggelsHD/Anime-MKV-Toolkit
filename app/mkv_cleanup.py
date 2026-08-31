@@ -121,28 +121,46 @@ def is_commentary(props: dict[str, Any]) -> bool:
     return value in (True, 1, "1", "true", "True")
 
 
+DEFAULT_STEPS: dict[str, bool] = {
+    "set_title": True,
+    "clear_date": True,
+    "clear_writing_app": True,
+    "clear_muxing_app": True,
+    "force_first_track_japanese": True,
+    "set_video_default": True,
+    "rename_audio_tracks": True,
+    "rename_subtitle_tracks": True,
+}
+
+
 def inspect_file(
     path: str,
     codec_map: dict[str, str],
     forced_suffix: str = "Forced",
     commentary_suffix: str = "Commentary",
+    steps: dict[str, bool] | None = None,
 ) -> FilePlan:
+    steps = {**DEFAULT_STEPS, **(steps or {})}
     data = get_mkvmerge_json(path)
     title = os.path.splitext(os.path.basename(path))[0]
     plan = FilePlan(path=path, title=title)
 
-    plan.edits.append(PlannedEdit("info", "set", f"title={plan.title}"))
-    plan.edits.append(PlannedEdit("info", "delete", "date"))
-    plan.edits.append(PlannedEdit("info", "set", "writing-application="))
-    plan.edits.append(PlannedEdit("info", "set", "muxing-application="))
-    plan.summaries.append(f'title -> "{plan.title}"')
-    plan.summaries.append("date -> ")
-    plan.summaries.append("writing-application -> ")
-    plan.summaries.append("muxing-application -> ")
+    if steps["set_title"]:
+        plan.edits.append(PlannedEdit("info", "set", f"title={plan.title}"))
+        plan.summaries.append(f'title -> "{plan.title}"')
+    if steps["clear_date"]:
+        plan.edits.append(PlannedEdit("info", "delete", "date"))
+        plan.summaries.append("date -> ")
+    if steps["clear_writing_app"]:
+        plan.edits.append(PlannedEdit("info", "set", "writing-application="))
+        plan.summaries.append("writing-application -> ")
+    if steps["clear_muxing_app"]:
+        plan.edits.append(PlannedEdit("info", "set", "muxing-application="))
+        plan.summaries.append("muxing-application -> ")
 
     tracks = data.get("tracks", [])
 
-    if tracks:
+    if steps["force_first_track_japanese"] and tracks:
         plan.edits.append(PlannedEdit("track:1", "set", "language=jpn"))
         plan.edits.append(PlannedEdit("track:1", "delete", "name"))
         plan.summaries.append("track:1 language -> jpn")
@@ -153,12 +171,12 @@ def inspect_file(
         props = track.get("properties", {})
         language = props.get("language") or "und"
 
-        if track_type == "video":
+        if track_type == "video" and steps["set_video_default"]:
             selector = f"track:{overall_index}"
             plan.edits.append(PlannedEdit(selector, "set", "flag-default=1"))
             plan.summaries.append(f"{selector} video -> flag-default=1")
 
-        if track_type == "audio":
+        if track_type == "audio" and steps["rename_audio_tracks"]:
             selector = f"track:{overall_index}"
             codec = track.get("codec")
             codec_display, unknown_codec = codec_name(codec, codec_map)
@@ -176,7 +194,7 @@ def inspect_file(
             plan.edits.append(PlannedEdit(selector, "set", f"name={new_name}"))
             plan.summaries.append(f'{selector} audio -> "{new_name}"')
 
-        elif track_type == "subtitles":
+        elif track_type == "subtitles" and steps["rename_subtitle_tracks"]:
             selector = f"track:{overall_index}"
             suffix = f" {forced_suffix}" if is_forced(props) else ""
             commentary = is_commentary(props)
@@ -218,18 +236,21 @@ def clean_file(
     forced_suffix: str = "Forced",
     commentary_suffix: str = "Commentary",
     dry_run: bool = False,
+    steps: dict[str, bool] | None = None,
 ) -> dict:
     """Inspect and clean up one MKV file's metadata in place. Returns a
     structured result: {ok, summary, warnings, error, edits_count}.
 
     With dry_run=True, only inspect_file() (read-only, via mkvmerge -J) runs -
     apply_plan() (which invokes mkvpropedit) is skipped, so the file on disk
-    is never touched."""
+    is never touched. `steps` turns individual cleanup steps on/off (see
+    DEFAULT_STEPS); a step that's off contributes no edits and no summary
+    lines at all."""
     if not os.path.isfile(path):
         return {"ok": False, "error": "File not found on disk", "summary": [], "warnings": [], "edits_count": 0}
 
     try:
-        plan = inspect_file(path, codec_map, forced_suffix, commentary_suffix)
+        plan = inspect_file(path, codec_map, forced_suffix, commentary_suffix, steps=steps)
     except MkvCleanupError as exc:
         return {"ok": False, "error": str(exc), "summary": [], "warnings": [], "edits_count": 0}
 

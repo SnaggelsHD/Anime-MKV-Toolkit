@@ -257,6 +257,17 @@ button.danger:hover { background: var(--danger); color: #fff; }
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+.cleanup-step-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px dashed var(--border);
+}
+.cleanup-step-toggle:last-child { border-bottom: none; }
+.cleanup-step-toggle input { flex-shrink: 0; }
 .settings-actions label {
   display: flex;
   flex-direction: column;

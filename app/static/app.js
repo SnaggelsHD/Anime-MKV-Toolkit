@@ -1035,6 +1035,56 @@ function initSettingsTab() {
 
   loadCodecMappings();
   loadSubtitleSettings();
+  loadCleanupSteps();
+}
+
+const CLEANUP_STEPS = [
+  { key: "set_title", label: "Set container title to the filename" },
+  { key: "clear_date", label: "Clear the container's date tag" },
+  { key: "clear_writing_app", label: "Clear the writing-application tag" },
+  { key: "clear_muxing_app", label: "Clear the muxing-application tag" },
+  { key: "force_first_track_japanese", label: "Force the first track to Japanese and clear its name" },
+  { key: "set_video_default", label: "Set the default flag on video tracks" },
+  { key: "rename_audio_tracks", label: "Rename audio tracks (language, codec, channels)" },
+  { key: "rename_subtitle_tracks", label: "Rename subtitle tracks (language, Forced/Commentary suffix)" },
+];
+
+async function loadCleanupSteps() {
+  const container = document.getElementById("cleanup-steps-list");
+  container.textContent = "Loading...";
+  try {
+    const steps = await api("/api/cleanup/settings/steps");
+    renderCleanupSteps(steps);
+  } catch (err) {
+    container.innerHTML = `<p class="item-sub">Failed to load: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderCleanupSteps(steps) {
+  const container = document.getElementById("cleanup-steps-list");
+  container.innerHTML = CLEANUP_STEPS.map(
+    (step) => `
+      <label class="cleanup-step-toggle">
+        <input type="checkbox" data-step="${step.key}" ${steps[step.key] ? "checked" : ""}>
+        ${escapeHtml(step.label)}
+      </label>`
+  ).join("");
+
+  container.querySelectorAll("[data-step]").forEach((checkbox) =>
+    checkbox.addEventListener("change", async () => {
+      const key = checkbox.dataset.step;
+      try {
+        await api("/api/cleanup/settings/steps", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [key]: checkbox.checked }),
+        });
+      } catch (err) {
+        checkbox.checked = !checkbox.checked;
+        toast(`Failed to save: ${err.message}`, "error");
+      }
+    })
+  );
 }
 
 async function loadCodecMappings() {

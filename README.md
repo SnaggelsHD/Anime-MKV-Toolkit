@@ -136,12 +136,19 @@ container metadata from anime MKV rips — the same rules a prior standalone
   every subtitle track to `"<Language> [Commentary][ Forced]"`.
 - Flags unrecognized audio codecs as warnings without failing the cleanup.
 
+Each of the steps above can be turned on or off independently from
+**Settings → Cleanup — Steps**. A disabled step contributes no edit and no
+line in the Dry Run preview — for example, turning off "Force the first
+track to Japanese and clear its name" stops that quirky first-track rule
+without affecting audio/subtitle renaming, and turning off "Rename audio
+tracks" leaves audio track names untouched while everything else still runs.
+
 The audio codec display names and the subtitle "Forced"/"Commentary" suffixes
 are configurable from **Settings → Cleanup**. Built-in codec entries (the ones
 from the original script) can have their display name edited but not their
 codec identifier, and can't be deleted; entries you add yourself are fully
-editable and deletable. Changes take effect on the next cleanup run — no
-restart needed.
+editable and deletable. Changes (including the step toggles) take effect on
+the next cleanup run — no restart needed.
 
 Cleanup works directly on the MKV file via `mkvpropedit` (fast in-place
 metadata edit, no remux) and doesn't require the episode to have been scanned

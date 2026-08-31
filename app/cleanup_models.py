@@ -76,10 +76,21 @@ class CleanupCodecMapping(CleanupBase):
 
 
 class CleanupSettings(CleanupBase):
-    """Singleton row (id=1) holding the configurable subtitle-name suffixes."""
+    """Singleton row (id=1) holding the configurable subtitle-name suffixes
+    and the on/off switch for each individual cleanup step. All step columns
+    default to True so an existing install's behavior doesn't change until
+    someone explicitly turns a step off in Settings."""
 
     __tablename__ = "cleanup_settings"
 
     id = Column(Integer, primary_key=True)
     forced_suffix = Column(String, nullable=False, default="Forced")
     commentary_suffix = Column(String, nullable=False, default="Commentary")
+    set_title = Column(Boolean, nullable=False, default=True)
+    clear_date = Column(Boolean, nullable=False, default=True)
+    clear_writing_app = Column(Boolean, nullable=False, default=True)
+    clear_muxing_app = Column(Boolean, nullable=False, default=True)
+    force_first_track_japanese = Column(Boolean, nullable=False, default=True)
+    set_video_default = Column(Boolean, nullable=False, default=True)
+    rename_audio_tracks = Column(Boolean, nullable=False, default=True)
+    rename_subtitle_tracks = Column(Boolean, nullable=False, default=True)

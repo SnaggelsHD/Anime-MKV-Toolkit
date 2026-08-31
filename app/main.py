@@ -13,7 +13,7 @@ from app.backup import backup_episode, backup_library, backup_season, backup_sho
 from app.backup_db import BackupSessionLocal, get_backup_db, init_backup_db
 from app.backup_models import BackupEpisode, BackupLibrary, BackupShow
 from app.cleanup import cleanup_episode, cleanup_library, cleanup_season, cleanup_show
-from app.cleanup_db import CleanupSessionLocal, get_cleanup_db, init_cleanup_db
+from app.cleanup_db import STEP_TOGGLE_COLUMNS, CleanupSessionLocal, get_cleanup_db, init_cleanup_db
 from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupSettings, CleanupShow
 from app.config import BACKUP_DB_PATH, CLEANUP_DB_PATH, DB_PATH, LIBRARIES_ROOT
 from app.db import SessionLocal, get_db, init_db
@@ -833,6 +833,27 @@ def update_subtitle_settings(payload: dict, cleanup_db: Session = Depends(get_cl
     settings.commentary_suffix = commentary_suffix
     cleanup_db.commit()
     return {"forced_suffix": settings.forced_suffix, "commentary_suffix": settings.commentary_suffix}
+
+
+@app.get("/api/cleanup/settings/steps")
+def get_cleanup_steps(cleanup_db: Session = Depends(get_cleanup_db)):
+    settings = cleanup_db.query(CleanupSettings).first()
+    if settings is None:
+        return {name: True for name in STEP_TOGGLE_COLUMNS}
+    return {name: getattr(settings, name) for name in STEP_TOGGLE_COLUMNS}
+
+
+@app.put("/api/cleanup/settings/steps")
+def update_cleanup_steps(payload: dict, cleanup_db: Session = Depends(get_cleanup_db)):
+    settings = cleanup_db.query(CleanupSettings).first()
+    if settings is None:
+        settings = CleanupSettings(id=1)
+        cleanup_db.add(settings)
+    for name in STEP_TOGGLE_COLUMNS:
+        if name in payload:
+            setattr(settings, name, bool(payload[name]))
+    cleanup_db.commit()
+    return {name: getattr(settings, name) for name in STEP_TOGGLE_COLUMNS}
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
