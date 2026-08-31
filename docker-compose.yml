@@ -1,7 +1,7 @@
 services:
-  mkv-chapter-backup:
+  anime-mkv-toolkit:
     build: .
-    container_name: mkv-chapter-backup
+    container_name: anime-mkv-toolkit
     ports:
       - "8077:8000"
     volumes:

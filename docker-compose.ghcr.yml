@@ -1,7 +1,7 @@
 services:
-  mkv-chapter-backup:
-    image: ghcr.io/snaggelshd/mkv-backup-utility:latest
-    container_name: mkv-chapter-backup
+  anime-mkv-toolkit:
+    image: ghcr.io/snaggelshd/anime-mkv-toolkit:latest
+    container_name: anime-mkv-toolkit
     ports:
       - "8077:8000"
     volumes:

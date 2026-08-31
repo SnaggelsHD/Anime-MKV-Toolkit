@@ -37,7 +37,7 @@ from app.scanner import sync_episodes, sync_libraries, sync_shows
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("mkv_backup")
 
-app = FastAPI(title="MKV Chapter & Media Info Backup")
+app = FastAPI(title="Anime MKV Toolkit")
 
 
 class NoCacheStaticMiddleware(BaseHTTPMiddleware):

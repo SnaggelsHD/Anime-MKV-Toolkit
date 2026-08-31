@@ -1,9 +1,10 @@
-# MKV Chapter & Media Info Backup
+# Anime MKV Toolkit
 
-A Dockerized web app to back up and restore MKV chapter data and track metadata
-(mediainfo) for an anime library, using a two-phase **scan → backup** workflow
-so backed-up data survives even if the source files are later moved, renamed,
-or temporarily missing.
+A Dockerized web app for managing an anime MKV library: back up and restore
+chapter data and track metadata (mediainfo) using a two-phase
+**scan → backup** workflow so backed-up data survives even if the source
+files are later moved, renamed, or temporarily missing — and clean up noisy
+track/container metadata on the files themselves, all from one web UI.
 
 Matching is done by `(library, show, filename)` only — files are not hashed,
 so this assumes stable filenames (e.g. as produced by TinyMediaManager).
@@ -36,7 +37,7 @@ and the health check at [http://localhost:8077/api/health](http://localhost:8077
 
 Every push to `main` and every `vX.Y.Z` tag is built and published to GHCR by
 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
-as `ghcr.io/snaggelshd/mkv-backup-utility` (tagged `latest`, `vX.Y.Z`, `vX.Y`,
+as `ghcr.io/snaggelshd/anime-mkv-toolkit` (tagged `latest`, `vX.Y.Z`, `vX.Y`,
 and a `sha-<short-sha>` for traceability) — amd64 only. No source checkout or
 build step is needed on the machine that runs it: copy
 [`docker-compose.ghcr.yml`](docker-compose.ghcr.yml) to your NAS, point the
@@ -51,7 +52,7 @@ Re-run `pull` followed by `up -d` to update to the latest published image.
 
 The image is public — `docker compose pull` on the NAS works with no login.
 (If GitHub ever defaults a future package to private, fix it once from
-`github.com/SnaggelsHD?tab=packages` → `mkv-backup-utility` → **Package
+`github.com/SnaggelsHD?tab=packages` → `anime-mkv-toolkit` → **Package
 settings** → visibility → **Public**.)
 
 ## Mounting your libraries
