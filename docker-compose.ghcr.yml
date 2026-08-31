@@ -1,0 +1,13 @@
+services:
+  mkv-chapter-backup:
+    image: ghcr.io/snaggelshd/mkv-backup-utility:latest
+    container_name: mkv-chapter-backup
+    ports:
+      - "8077:8000"
+    volumes:
+      - ./data:/data
+      - /path/to/your/libraries:/libraries
+    environment:
+      - DB_PATH=/data/chapters.db
+      - LIBRARIES_ROOT=/libraries
+    restart: unless-stopped

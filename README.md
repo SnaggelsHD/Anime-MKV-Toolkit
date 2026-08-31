@@ -32,6 +32,31 @@ docker compose up -d
 The UI will be available at [http://localhost:8077](http://localhost:8077),
 and the health check at [http://localhost:8077/api/health](http://localhost:8077/api/health).
 
+## Running the prebuilt image (e.g. on a NAS)
+
+Every push to `main` and every `vX.Y.Z` tag is built and published to GHCR by
+[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
+as `ghcr.io/snaggelshd/mkv-backup-utility` (tagged `latest`, `vX.Y.Z`, `vX.Y`,
+and a `sha-<short-sha>` for traceability) — amd64 only. No source checkout or
+build step is needed on the machine that runs it: copy
+[`docker-compose.ghcr.yml`](docker-compose.ghcr.yml) to your NAS, point the
+`/libraries` volume at your actual media root, then:
+
+```bash
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Re-run `pull` followed by `up -d` to update to the latest published image.
+
+**One-time setup note:** a package published via the default `GITHUB_TOKEN`
+starts out **private** on GHCR regardless of the source repo's visibility.
+After the workflow's first successful run, open the package on GitHub
+(`github.com/SnaggelsHD?tab=packages` → `mkv-backup-utility` → **Package
+settings**) and change its visibility to **Public** so `docker compose pull`
+on the NAS doesn't need to authenticate. This is a one-time step; every
+subsequent publish keeps the visibility you set.
+
 ## Mounting your libraries
 
 Edit `docker-compose.yml` and point the `/libraries` volume at your actual
