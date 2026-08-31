@@ -49,13 +49,10 @@ docker compose -f docker-compose.ghcr.yml up -d
 
 Re-run `pull` followed by `up -d` to update to the latest published image.
 
-**One-time setup note:** a package published via the default `GITHUB_TOKEN`
-starts out **private** on GHCR regardless of the source repo's visibility.
-After the workflow's first successful run, open the package on GitHub
-(`github.com/SnaggelsHD?tab=packages` → `mkv-backup-utility` → **Package
-settings**) and change its visibility to **Public** so `docker compose pull`
-on the NAS doesn't need to authenticate. This is a one-time step; every
-subsequent publish keeps the visibility you set.
+The image is public — `docker compose pull` on the NAS works with no login.
+(If GitHub ever defaults a future package to private, fix it once from
+`github.com/SnaggelsHD?tab=packages` → `mkv-backup-utility` → **Package
+settings** → visibility → **Public**.)
 
 ## Mounting your libraries
 
