@@ -217,9 +217,14 @@ def clean_file(
     codec_map: dict[str, str],
     forced_suffix: str = "Forced",
     commentary_suffix: str = "Commentary",
+    dry_run: bool = False,
 ) -> dict:
     """Inspect and clean up one MKV file's metadata in place. Returns a
-    structured result: {ok, summary, warnings, error, edits_count}."""
+    structured result: {ok, summary, warnings, error, edits_count}.
+
+    With dry_run=True, only inspect_file() (read-only, via mkvmerge -J) runs -
+    apply_plan() (which invokes mkvpropedit) is skipped, so the file on disk
+    is never touched."""
     if not os.path.isfile(path):
         return {"ok": False, "error": "File not found on disk", "summary": [], "warnings": [], "edits_count": 0}
 
@@ -227,6 +232,15 @@ def clean_file(
         plan = inspect_file(path, codec_map, forced_suffix, commentary_suffix)
     except MkvCleanupError as exc:
         return {"ok": False, "error": str(exc), "summary": [], "warnings": [], "edits_count": 0}
+
+    if dry_run:
+        return {
+            "ok": True,
+            "error": None,
+            "summary": plan.summaries,
+            "warnings": plan.warnings,
+            "edits_count": len(plan.edits),
+        }
 
     stdout, stderr, code = apply_plan(plan)
     if code != 0:

@@ -199,7 +199,7 @@ h2 {
 .item-name { font-weight: 600; }
 .item-sub { font-size: 0.8rem; color: var(--muted); }
 
-.item-actions { display: flex; gap: 0.4rem; }
+.item-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 
 .episodes-container {
   margin: 0.25rem 0 0.5rem 0.9rem;
@@ -349,6 +349,10 @@ input[type="text"] {
 }
 
 .modal-header h3 { margin: 0; font-size: 1rem; word-break: break-all; }
+
+.dryrun-episode { margin-top: 1rem; }
+.dryrun-episode:first-of-type { margin-top: 0.5rem; }
+.dryrun-episode h3 { margin: 0 0 0.25rem 0; font-size: 0.85rem; word-break: break-all; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.5rem; }
 th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); }

@@ -62,9 +62,21 @@ def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> Cle
     return cleanup_episode
 
 
-def cleanup_episode(scan_db: Session, cleanup_db: Session, episode: Episode) -> dict:
+def cleanup_episode(scan_db: Session, cleanup_db: Session, episode: Episode, dry_run: bool = False) -> dict:
     codec_map, forced_suffix, commentary_suffix = _load_cleanup_config(cleanup_db)
-    result = clean_file(episode.path, codec_map, forced_suffix, commentary_suffix)
+    result = clean_file(episode.path, codec_map, forced_suffix, commentary_suffix, dry_run=dry_run)
+
+    if dry_run:
+        # Never touches cleanup.db or triggers a rescan - nothing on disk changed.
+        return {
+            "episode_id": episode.id,
+            "filename": episode.filename,
+            "ok": result["ok"],
+            "error": result["error"],
+            "summary": result["summary"],
+            "warnings": result["warnings"],
+            "dry_run": True,
+        }
 
     cleanup_ep = _get_or_create_cleanup_episode(cleanup_db, episode)
     existing = cleanup_db.query(CleanupResult).filter(CleanupResult.episode_id == cleanup_ep.id).first()
@@ -99,33 +111,35 @@ def cleanup_episode(scan_db: Session, cleanup_db: Session, episode: Episode) -> 
     }
 
 
-def cleanup_show(scan_db: Session, cleanup_db: Session, show: Show, on_result=None) -> list[dict]:
+def cleanup_show(scan_db: Session, cleanup_db: Session, show: Show, on_result=None, dry_run: bool = False) -> list[dict]:
     episodes = sync_episodes(scan_db, show)
     results = []
     for ep in episodes:
-        result = cleanup_episode(scan_db, cleanup_db, ep)
+        result = cleanup_episode(scan_db, cleanup_db, ep, dry_run=dry_run)
         results.append(result)
         if on_result:
             on_result(result)
     return results
 
 
-def cleanup_season(scan_db: Session, cleanup_db: Session, show: Show, season: str | None, on_result=None) -> list[dict]:
+def cleanup_season(
+    scan_db: Session, cleanup_db: Session, show: Show, season: str | None, on_result=None, dry_run: bool = False
+) -> list[dict]:
     episodes = sync_episodes(scan_db, show)
     results = []
     for ep in episodes:
         if ep.season != season:
             continue
-        result = cleanup_episode(scan_db, cleanup_db, ep)
+        result = cleanup_episode(scan_db, cleanup_db, ep, dry_run=dry_run)
         results.append(result)
         if on_result:
             on_result(result)
     return results
 
 
-def cleanup_library(scan_db: Session, cleanup_db: Session, library: Library, on_result=None) -> list[dict]:
+def cleanup_library(scan_db: Session, cleanup_db: Session, library: Library, on_result=None, dry_run: bool = False) -> list[dict]:
     shows = sync_shows(scan_db, library)
     results = []
     for show in shows:
-        results.extend(cleanup_show(scan_db, cleanup_db, show, on_result=on_result))
+        results.extend(cleanup_show(scan_db, cleanup_db, show, on_result=on_result, dry_run=dry_run))
     return results

@@ -12,6 +12,10 @@ function seasonQuery(seasonKey) {
   return seasonKey === UNSORTED_SEASON ? "" : `?season=${encodeURIComponent(seasonKey)}`;
 }
 
+function withDryRun(url) {
+  return url + (url.includes("?") ? "&" : "?") + "dry_run=true";
+}
+
 function formatTimestamp(iso) {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -211,6 +215,7 @@ function renderLibraries() {
           <button data-action="scan-library">Scan</button>
           <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
           <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+          <button data-action="dryrun-library">Dry Run</button>
         </div>
       </div>
     `;
@@ -241,6 +246,10 @@ function renderLibraries() {
         return;
       }
       startJob(`/api/cleanup/libraries/${lib.id}/clean`, () => selectLibrary(lib.id));
+    });
+    div.querySelector('[data-action="dryrun-library"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      startJob(withDryRun(`/api/cleanup/libraries/${lib.id}/clean`), (job) => openDryRunResults(job));
     });
     list.appendChild(div);
   }
@@ -290,6 +299,7 @@ function renderShowDetail() {
             <button class="primary" data-action="backup-show" data-show-id="${show.id}">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
             <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
             <button data-action="clean-show" data-show-id="${show.id}">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+            <button data-action="dryrun-show" data-show-id="${show.id}">Dry Run</button>
             <button class="danger" data-action="clear-show" data-show-id="${show.id}">Clear</button>
           </div>
         </div>
@@ -367,6 +377,13 @@ function renderShowDetail() {
       );
     })
   );
+  detail.querySelectorAll('[data-action="dryrun-show"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = Number(btn.dataset.showId);
+      startJob(withDryRun(`/api/cleanup/shows/${id}/clean`), (job) => openDryRunResults(job));
+    })
+  );
   detail.querySelectorAll('[data-action="clear-show"]').forEach((btn) =>
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -436,6 +453,7 @@ function renderEpisodes(showId, container) {
           <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup" : "Backup"}</button>
           <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean" : "Clean"}</button>
+          <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run</button>
           <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear</button>
         </div>
       </div>`;
@@ -498,6 +516,15 @@ function renderEpisodes(showId, container) {
         return;
       }
       startJob(`/api/cleanup/shows/${showId}/season/clean${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+    })
+  );
+  container.querySelectorAll('[data-action="dryrun-season"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startJob(
+        withDryRun(`/api/cleanup/shows/${showId}/season/clean${seasonQuery(btn.dataset.season)}`),
+        (job) => openDryRunResults(job)
+      );
     })
   );
   container.querySelectorAll('[data-action="clear-season"]').forEach((btn) =>
@@ -731,6 +758,7 @@ async function openEpisodeDetail(episodeId) {
           <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
           <button data-action="restore-episode">Restore chapters</button>
           <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
+          <button data-action="dryrun-episode">Dry Run</button>
           <button class="danger" data-action="clear-episode-backup">Clear Backup</button>
         </div>
         <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
@@ -784,6 +812,9 @@ async function openEpisodeDetail(episodeId) {
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
     });
   });
+  modalRoot.querySelector('[data-action="dryrun-episode"]').addEventListener("click", () => {
+    startJob(withDryRun(`/api/cleanup/episodes/${episodeId}/clean`), (job) => openDryRunResults(job));
+  });
   modalRoot.querySelector('[data-action="clear-episode-backup"]').addEventListener("click", async () => {
     if (!confirm(`Clear the backup for "${ep.filename}"? This cannot be undone. Files on disk and the scan database are never touched.`)) {
       return;
@@ -802,6 +833,62 @@ async function openEpisodeDetail(episodeId) {
 
 function closeModal() {
   document.getElementById("modal-root").innerHTML = "";
+}
+
+function openDryRunResults(job) {
+  const modalRoot = document.getElementById("modal-root");
+  const scopeLabel = job.label.replace(/^Dry run: /, "");
+
+  const episodesHtml = job.results
+    .map((r) => {
+      if (!r.ok) {
+        return `
+          <div class="dryrun-episode">
+            <h3>${escapeHtml(r.filename)}</h3>
+            <p class="item-sub" style="color:var(--danger);">Error: ${escapeHtml(r.error || "unknown error")}</p>
+          </div>`;
+      }
+      const rows = (r.summary || [])
+        .map((line) => {
+          const idx = line.indexOf(" -> ");
+          const field = idx === -1 ? line : line.slice(0, idx);
+          const value = idx === -1 ? "" : line.slice(idx + 4);
+          return `<tr><td>${escapeHtml(field)}</td><td>${escapeHtml(value) || "<em>cleared</em>"}</td></tr>`;
+        })
+        .join("");
+      const warningsHtml = (r.warnings || []).length
+        ? `<p class="item-sub" style="color:var(--danger);">${r.warnings.map(escapeHtml).join("<br>")}</p>`
+        : "";
+      return `
+        <div class="dryrun-episode">
+          <h3>${escapeHtml(r.filename)}</h3>
+          <table><thead><tr><th>Field</th><th>Would become</th></tr></thead><tbody>${rows}</tbody></table>
+          ${warningsHtml}
+        </div>`;
+    })
+    .join("");
+
+  const jobErrorHtml =
+    job.status === "error" ? `<p class="item-sub" style="color:var(--danger);">Job failed: ${escapeHtml(job.error)}</p>` : "";
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" id="modal-backdrop">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Dry run: ${escapeHtml(scopeLabel)}</h3>
+          <button data-action="close-modal">Close</button>
+        </div>
+        <p class="item-sub">No files were modified. This previews what "Clean" would change.</p>
+        ${jobErrorHtml}
+        ${episodesHtml || '<p class="item-sub">No episodes to preview.</p>'}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modal-backdrop").addEventListener("click", (e) => {
+    if (e.target.id === "modal-backdrop") closeModal();
+  });
+  modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
 }
 
 function initTabs() {

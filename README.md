@@ -145,8 +145,14 @@ the scan database (and the episode detail view's Track Metadata table) stays
 in sync with the file's new track names/languages — no manual rescan needed.
 It never touches the backup database. Run it per episode, season, show, or
 library; each already-cleaned scope shows a **Re-clean** button that confirms
-before overwriting. Episode rows show a third **cleaned** indicator alongside
-**scanned** and **backed up**, and the episode detail view shows the
+before overwriting. Every scope also has a **Dry Run** button that runs the
+same inspection but skips the `mkvpropedit` step entirely, so no file is
+touched — it opens a popup listing exactly what each field would change to
+(and any warnings), for previewing before committing to a real cleanup. Dry
+runs never need confirmation and never affect the cleaned/scanned indicators
+or timestamps, since nothing on disk or in either database actually changes.
+Episode rows show a third **cleaned** indicator alongside **scanned** and
+**backed up**, and the episode detail view shows the
 last-cleaned timestamp plus any error inline.
 
 ## Notes

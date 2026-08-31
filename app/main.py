@@ -630,34 +630,36 @@ def export_backup_endpoint():
 
 
 @app.post("/api/cleanup/episodes/{episode_id}/clean")
-def clean_episode_endpoint(episode_id: int, db: Session = Depends(get_db)):
+def clean_episode_endpoint(episode_id: int, dry_run: bool = False, db: Session = Depends(get_db)):
     episode = db.get(Episode, episode_id)
     if episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
 
     def work(scan_db, cleanup_db, on_result):
-        on_result(cleanup_episode(scan_db, cleanup_db, scan_db.get(Episode, episode_id)))
+        on_result(cleanup_episode(scan_db, cleanup_db, scan_db.get(Episode, episode_id), dry_run=dry_run))
 
-    job_id = launch_cleanup_job(f"Clean up {episode.filename}", 1, work)
+    label = f"Dry run: clean up {episode.filename}" if dry_run else f"Clean up {episode.filename}"
+    job_id = launch_cleanup_job(label, 1, work)
     return {"job_id": job_id}
 
 
 @app.post("/api/cleanup/shows/{show_id}/clean")
-def clean_show_endpoint(show_id: int, db: Session = Depends(get_db)):
+def clean_show_endpoint(show_id: int, dry_run: bool = False, db: Session = Depends(get_db)):
     show = db.get(Show, show_id)
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
     total = len(sync_episodes(db, show))
 
     def work(scan_db, cleanup_db, on_result):
-        cleanup_show(scan_db, cleanup_db, scan_db.get(Show, show_id), on_result=on_result)
+        cleanup_show(scan_db, cleanup_db, scan_db.get(Show, show_id), on_result=on_result, dry_run=dry_run)
 
-    job_id = launch_cleanup_job(f'Clean up "{show.name}"', total, work)
+    label = f'Dry run: clean up "{show.name}"' if dry_run else f'Clean up "{show.name}"'
+    job_id = launch_cleanup_job(label, total, work)
     return {"job_id": job_id}
 
 
 @app.post("/api/cleanup/shows/{show_id}/season/clean")
-def clean_season_endpoint(show_id: int, season: str | None = None, db: Session = Depends(get_db)):
+def clean_season_endpoint(show_id: int, season: str | None = None, dry_run: bool = False, db: Session = Depends(get_db)):
     show = db.get(Show, show_id)
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
@@ -665,15 +667,16 @@ def clean_season_endpoint(show_id: int, season: str | None = None, db: Session =
     total = sum(1 for ep in episodes if ep.season == season)
 
     def work(scan_db, cleanup_db, on_result):
-        cleanup_season(scan_db, cleanup_db, scan_db.get(Show, show_id), season, on_result=on_result)
+        cleanup_season(scan_db, cleanup_db, scan_db.get(Show, show_id), season, on_result=on_result, dry_run=dry_run)
 
-    label = f'Clean up Season {season} of "{show.name}"' if season else f'Clean up Unsorted episodes of "{show.name}"'
+    scope = f'Season {season} of "{show.name}"' if season else f'Unsorted episodes of "{show.name}"'
+    label = f"Dry run: clean up {scope}" if dry_run else f"Clean up {scope}"
     job_id = launch_cleanup_job(label, total, work)
     return {"job_id": job_id}
 
 
 @app.post("/api/cleanup/libraries/{library_id}/clean")
-def clean_library_endpoint(library_id: int, db: Session = Depends(get_db)):
+def clean_library_endpoint(library_id: int, dry_run: bool = False, db: Session = Depends(get_db)):
     library = db.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="Library not found")
@@ -681,9 +684,10 @@ def clean_library_endpoint(library_id: int, db: Session = Depends(get_db)):
     total = sum(len(sync_episodes(db, show)) for show in shows)
 
     def work(scan_db, cleanup_db, on_result):
-        cleanup_library(scan_db, cleanup_db, scan_db.get(Library, library_id), on_result=on_result)
+        cleanup_library(scan_db, cleanup_db, scan_db.get(Library, library_id), on_result=on_result, dry_run=dry_run)
 
-    job_id = launch_cleanup_job(f'Clean up library "{library.name}"', total, work)
+    label = f'Dry run: clean up library "{library.name}"' if dry_run else f'Clean up library "{library.name}"'
+    job_id = launch_cleanup_job(label, total, work)
     return {"job_id": job_id}
 
 
