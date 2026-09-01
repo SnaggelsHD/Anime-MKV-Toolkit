@@ -4,6 +4,8 @@ const state = {
   shows: [],
   expandedShowIds: new Set(),
   episodes: [],
+  detailKind: null, // "show" | "episode" | null
+  detailId: null,
 };
 
 const UNSORTED_SEASON = "__unsorted__";
@@ -247,119 +249,135 @@ async function resumeActiveJobs() {
 }
 
 async function loadLibraries() {
-  const list = document.getElementById("library-list");
-  list.textContent = "Loading...";
+  const select = document.getElementById("library-select");
   try {
     state.libraries = await api("/api/libraries");
   } catch (err) {
-    list.textContent = "Failed to load libraries.";
     toast(`Failed to load libraries: ${err.message}`, "error");
     return;
   }
-  renderLibraries();
-}
-
-function renderLibraries() {
-  const list = document.getElementById("library-list");
-  list.innerHTML = "";
   if (state.libraries.length === 0) {
-    list.innerHTML = '<p id="show-detail-placeholder">No libraries found under the mounted /libraries path.</p>';
+    select.innerHTML = '<option value="">No libraries found</option>';
+    document.getElementById("shows-list").innerHTML = "";
+    document.getElementById("library-summary").innerHTML =
+      '<p class="placeholder-text">No libraries found under the mounted /libraries path.</p>';
+    resetDetailPanel();
     return;
   }
-  for (const lib of state.libraries) {
-    const div = document.createElement("div");
-    div.className = `library-item${lib.id === state.selectedLibraryId ? " selected" : ""}`;
-    div.innerHTML = `
-      <div class="item-row" data-role="select-library">
-        <div class="item-name-wrap">
-          <span class="chevron">▸</span>
-          <div>
-            <div class="item-name">${escapeHtml(lib.name)}${lib.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
-            <div class="item-sub">${escapeHtml(lib.path)}</div>
-            <div class="item-sub">${lib.show_count} show(s) • ${lib.cleaned_count} cleaned</div>
-          </div>
+  const stillExists = state.libraries.some((l) => l.id === state.selectedLibraryId);
+  await selectLibrary(stillExists ? state.selectedLibraryId : state.libraries[0].id);
+}
+
+function renderLibrarySelect() {
+  const select = document.getElementById("library-select");
+  select.innerHTML = state.libraries
+    .map(
+      (lib) =>
+        `<option value="${lib.id}" ${lib.id === state.selectedLibraryId ? "selected" : ""}>${escapeHtml(lib.name)}${lib.missing ? " (missing)" : ""}</option>`
+    )
+    .join("");
+}
+
+function renderLibrarySummary() {
+  const container = document.getElementById("library-summary");
+  const lib = state.libraries.find((l) => l.id === state.selectedLibraryId);
+  if (!lib) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="library-summary-row">
+      <div class="item-name-wrap">
+        <div>
+          <div class="item-name">${escapeHtml(lib.name)}${lib.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+          <div class="item-sub">${escapeHtml(lib.path)}</div>
+          <div class="item-sub">${lib.show_count} show(s) • ${lib.cleaned_count} cleaned</div>
         </div>
-        <div class="item-actions">
-          <div class="menu-wrap">
-            <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
-            <div class="menu-dropdown" hidden>
-              <button data-action="scan-library">Scan</button>
-              <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
-              <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
-              <button data-action="dryrun-library">Dry Run</button>
-            </div>
+      </div>
+      <div class="item-actions">
+        <div class="menu-wrap">
+          <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+          <div class="menu-dropdown" hidden>
+            <button data-action="scan-library">Scan</button>
+            <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
+            <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+            <button data-action="dryrun-library">Dry Run</button>
           </div>
         </div>
       </div>
-    `;
-    div.querySelector('[data-role="select-library"]').addEventListener("click", () => selectLibrary(lib.id));
-    div.querySelector('[data-action="scan-library"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (!confirm(`Scan library "${lib.name}"? This re-extracts chapters and mediainfo from every episode on disk and may take a while.`)) {
-        return;
-      }
-      startJob(`/api/libraries/${lib.id}/scan`, () => selectLibrary(lib.id));
-    });
-    div.querySelector('[data-action="backup-library"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (
-        lib.backed_up_count > 0 &&
-        !confirm(`Re-backup all shows in "${lib.name}"? This overwrites the existing backup with the current scan data.`)
-      ) {
-        return;
-      }
-      startJob(`/api/libraries/${lib.id}/backup`, () => selectLibrary(lib.id));
-    });
-    div.querySelector('[data-action="clean-library"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (
-        lib.cleaned_count > 0 &&
-        !confirm(`Re-clean up all shows in "${lib.name}"? This rewrites track languages/names and container metadata in every MKV file in this library.`)
-      ) {
-        return;
-      }
-      startJob(`/api/cleanup/libraries/${lib.id}/clean`, () => selectLibrary(lib.id));
-    });
-    div.querySelector('[data-action="dryrun-library"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      startJob(withDryRun(`/api/cleanup/libraries/${lib.id}/clean`), (job) => openDryRunResults(job));
-    });
-    wireMenus(div);
-    list.appendChild(div);
-  }
+    </div>
+  `;
+  container.querySelector('[data-action="scan-library"]').addEventListener("click", () => {
+    if (!confirm(`Scan library "${lib.name}"? This re-extracts chapters and mediainfo from every episode on disk and may take a while.`)) {
+      return;
+    }
+    startJob(`/api/libraries/${lib.id}/scan`, () => selectLibrary(lib.id));
+  });
+  container.querySelector('[data-action="backup-library"]').addEventListener("click", () => {
+    if (
+      lib.backed_up_count > 0 &&
+      !confirm(`Re-backup all shows in "${lib.name}"? This overwrites the existing backup with the current scan data.`)
+    ) {
+      return;
+    }
+    startJob(`/api/libraries/${lib.id}/backup`, () => selectLibrary(lib.id));
+  });
+  container.querySelector('[data-action="clean-library"]').addEventListener("click", () => {
+    if (
+      lib.cleaned_count > 0 &&
+      !confirm(`Re-clean up all shows in "${lib.name}"? This rewrites track languages/names and container metadata in every MKV file in this library.`)
+    ) {
+      return;
+    }
+    startJob(`/api/cleanup/libraries/${lib.id}/clean`, () => selectLibrary(lib.id));
+  });
+  container.querySelector('[data-action="dryrun-library"]').addEventListener("click", () => {
+    startJob(withDryRun(`/api/cleanup/libraries/${lib.id}/clean`), (job) => openDryRunResults(job));
+  });
+  wireMenus(container);
 }
 
 async function selectLibrary(libraryId) {
-  if (state.selectedLibraryId !== libraryId) {
+  const changingLibrary = state.selectedLibraryId !== libraryId;
+  if (changingLibrary) {
     state.expandedShowIds.clear();
+    resetDetailPanel();
   }
   state.selectedLibraryId = libraryId;
-  renderLibraries();
-  const detail = document.getElementById("show-detail");
-  detail.innerHTML = '<p id="show-detail-placeholder">Loading shows...</p>';
+  renderLibrarySelect();
+  renderLibrarySummary();
+  const list = document.getElementById("shows-list");
+  list.innerHTML = '<p class="placeholder-text">Loading shows...</p>';
   try {
     state.shows = await api(`/api/libraries/${libraryId}/shows`);
   } catch (err) {
-    detail.innerHTML = `<p id="show-detail-placeholder">Failed to load shows: ${escapeHtml(err.message)}</p>`;
+    list.innerHTML = `<p class="placeholder-text">Failed to load shows: ${escapeHtml(err.message)}</p>`;
     return;
   }
-  renderShowDetail();
+  renderShowsList();
   for (const showId of Array.from(state.expandedShowIds)) {
     if (state.shows.some((s) => s.id === showId)) {
       toggleShowEpisodes(showId, true);
     }
   }
+  if (state.detailKind === "show" && !changingLibrary) {
+    renderShowOverview(state.detailId);
+  }
 }
 
-function renderShowDetail() {
-  const detail = document.getElementById("show-detail");
-  const lib = state.libraries.find((l) => l.id === state.selectedLibraryId);
-  if (!lib) return;
+function afterShowMutation(showId) {
+  // selectLibrary() re-renders the current show overview itself (see its
+  // trailing check) if this show is what's showing in the detail panel.
+  return selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(showId, true));
+}
+
+function renderShowsList() {
+  const list = document.getElementById("shows-list");
 
   const showsHtml = state.shows
     .map(
       (show) => `
-      <div class="show-item${state.expandedShowIds.has(show.id) ? " expanded" : ""}" data-show-item="${show.id}">
+      <div class="show-item${state.expandedShowIds.has(show.id) ? " expanded" : ""}${state.detailKind === "show" && state.detailId === show.id ? " selected" : ""}" data-show-item="${show.id}">
         <div class="item-row" data-show-id="${show.id}">
           <div class="item-name-wrap">
             <span class="chevron">▸</span>
@@ -378,9 +396,9 @@ function renderShowDetail() {
                 <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
                 <button data-action="clean-show" data-show-id="${show.id}">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
                 <button data-action="dryrun-show" data-show-id="${show.id}">Dry Run</button>
+                <button class="danger" data-action="clear-show" data-show-id="${show.id}">Clear</button>
               </div>
             </div>
-            <button class="danger" data-action="clear-show" data-show-id="${show.id}">Clear</button>
           </div>
         </div>
         <div class="episodes-container" id="episodes-${show.id}"></div>
@@ -388,19 +406,23 @@ function renderShowDetail() {
     )
     .join("");
 
-  detail.innerHTML = `
-    <h2>${escapeHtml(lib.name)} — Shows</h2>
-    ${showsHtml || '<p id="show-detail-placeholder">No shows found in this library.</p>'}
-  `;
+  list.innerHTML = showsHtml || '<p class="placeholder-text">No shows found in this library.</p>';
 
-  wirePosterImages(detail);
-  wireMenus(detail);
-  detail.querySelectorAll('[data-show-id]').forEach((el) => {
+  wirePosterImages(list);
+  wireMenus(list);
+  list.querySelectorAll('[data-show-id]').forEach((el) => {
     if (el.classList.contains("item-row")) {
-      el.addEventListener("click", () => toggleShowEpisodes(Number(el.dataset.showId)));
+      el.addEventListener("click", () => {
+        const id = Number(el.dataset.showId);
+        toggleShowEpisodes(id);
+        document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
+        document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
+        el.closest(".show-item")?.classList.add("selected");
+        renderShowOverview(id);
+      });
     }
   });
-  detail.querySelectorAll('[data-action="scan-show"]').forEach((btn) =>
+  list.querySelectorAll('[data-action="scan-show"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
@@ -411,12 +433,10 @@ function renderShowDetail() {
       ) {
         return;
       }
-      startJob(`/api/shows/${id}/scan`, () =>
-        selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
-      );
+      startJob(`/api/shows/${id}/scan`, () => afterShowMutation(id));
     })
   );
-  detail.querySelectorAll('[data-action="backup-show"]').forEach((btn) =>
+  list.querySelectorAll('[data-action="backup-show"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
@@ -427,12 +447,10 @@ function renderShowDetail() {
       ) {
         return;
       }
-      startJob(`/api/shows/${id}/backup`, () =>
-        selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
-      );
+      startJob(`/api/shows/${id}/backup`, () => afterShowMutation(id));
     })
   );
-  detail.querySelectorAll('[data-action="restore-show"]').forEach((btn) =>
+  list.querySelectorAll('[data-action="restore-show"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
@@ -443,7 +461,7 @@ function renderShowDetail() {
       startJob(`/api/shows/${id}/restore`, () => selectLibrary(state.selectedLibraryId));
     })
   );
-  detail.querySelectorAll('[data-action="clean-show"]').forEach((btn) =>
+  list.querySelectorAll('[data-action="clean-show"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
@@ -454,19 +472,17 @@ function renderShowDetail() {
       ) {
         return;
       }
-      startJob(`/api/cleanup/shows/${id}/clean`, () =>
-        selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(id, true))
-      );
+      startJob(`/api/cleanup/shows/${id}/clean`, () => afterShowMutation(id));
     })
   );
-  detail.querySelectorAll('[data-action="dryrun-show"]').forEach((btn) =>
+  list.querySelectorAll('[data-action="dryrun-show"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
       startJob(withDryRun(`/api/cleanup/shows/${id}/clean`), (job) => openDryRunResults(job));
     })
   );
-  detail.querySelectorAll('[data-action="clear-show"]').forEach((btn) =>
+  list.querySelectorAll('[data-action="clear-show"]').forEach((btn) =>
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.showId);
@@ -477,8 +493,7 @@ function renderShowDetail() {
       try {
         await api(`/api/shows/${id}`, { method: "DELETE" });
         toast(`Cleared backup for "${show.name}"`, "ok");
-        await selectLibrary(state.selectedLibraryId);
-        toggleShowEpisodes(id, true);
+        await afterShowMutation(id);
       } catch (err) {
         toast(`Failed to clear: ${err.message}`, "error");
       }
@@ -499,11 +514,11 @@ async function toggleShowEpisodes(showId, forceReload = false) {
   }
   state.expandedShowIds.add(showId);
   showItemEl?.classList.add("expanded");
-  container.innerHTML = '<p id="show-detail-placeholder">Loading episodes...</p>';
+  container.innerHTML = '<p class="placeholder-text">Loading episodes...</p>';
   try {
     state.episodes = await api(`/api/shows/${showId}/episodes`);
   } catch (err) {
-    container.innerHTML = `<p id="show-detail-placeholder">Failed to load episodes: ${escapeHtml(err.message)}</p>`;
+    container.innerHTML = `<p class="placeholder-text">Failed to load episodes: ${escapeHtml(err.message)}</p>`;
     return;
   }
   renderEpisodes(showId, container);
@@ -511,7 +526,7 @@ async function toggleShowEpisodes(showId, forceReload = false) {
 
 function renderEpisodes(showId, container) {
   if (state.episodes.length === 0) {
-    container.innerHTML = '<p id="show-detail-placeholder">No episodes found.</p>';
+    container.innerHTML = '<p class="placeholder-text">No episodes found.</p>';
     return;
   }
 
@@ -546,9 +561,9 @@ function renderEpisodes(showId, container) {
             <div class="menu-dropdown" hidden>
               <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean" : "Clean"}</button>
               <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run</button>
+              <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear</button>
             </div>
           </div>
-          <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear</button>
         </div>
       </div>`;
     for (const ep of eps) {
@@ -556,8 +571,9 @@ function renderEpisodes(showId, container) {
       if (!ep.has_cleanup) cleanFlag = '<span class="flag-missing">cleaned ✗</span>';
       else if (ep.cleanup_ok) cleanFlag = '<span class="flag-ok">cleaned ✓</span>';
       else cleanFlag = '<span class="flag-missing">cleanup failed ✗</span>';
+      const epSelected = state.detailKind === "episode" && state.detailId === ep.id;
       html += `
-        <div class="episode-row" data-episode-id="${ep.id}">
+        <div class="episode-row${epSelected ? " selected" : ""}" data-episode-id="${ep.id}">
           <div class="episode-name">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
           <div class="flags">
             <span class="${ep.has_scan ? "flag-ok" : "flag-missing"}">${ep.has_scan ? "scanned ✓" : "scanned ✗"}</span>
@@ -573,7 +589,12 @@ function renderEpisodes(showId, container) {
   wirePosterImages(container);
   wireMenus(container);
   container.querySelectorAll("[data-episode-id]").forEach((el) =>
-    el.addEventListener("click", () => openEpisodeDetail(Number(el.dataset.episodeId)))
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
+      document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
+      el.classList.add("selected");
+      renderEpisodeDetail(Number(el.dataset.episodeId));
+    })
   );
   container.querySelectorAll('[data-action="scan-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
@@ -815,17 +836,120 @@ function wireToggleGroups(root) {
   });
 }
 
-async function openEpisodeDetail(episodeId) {
-  const modalRoot = document.getElementById("modal-root");
-  modalRoot.innerHTML = '<div class="modal-backdrop"><div class="modal">Loading...</div></div>';
+function resetDetailPanel() {
+  state.detailKind = null;
+  state.detailId = null;
+  document.getElementById("detail-panel").innerHTML =
+    '<p class="placeholder-text">Select a show or episode to see its details.</p>';
+}
+
+async function renderShowOverview(showId) {
+  const panel = document.getElementById("detail-panel");
+  const show = state.shows.find((s) => s.id === showId);
+  if (!show) {
+    resetDetailPanel();
+    return;
+  }
+  state.detailKind = "show";
+  state.detailId = showId;
+
+  panel.innerHTML = `
+    <div class="detail-panel-header">
+      <div class="detail-title-wrap">
+        <img class="poster-thumb-lg" data-poster-src="/api/shows/${show.id}/poster" alt="">
+        <div>
+          <h2>${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h2>
+          <p class="item-sub">${escapeHtml(show.path)}</p>
+          <p class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</p>
+        </div>
+      </div>
+      <button data-action="close-detail" aria-label="Close" title="Close">×</button>
+    </div>
+    <div class="item-actions" style="margin: 0.75rem 0;">
+      <button data-action="scan-show">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
+      <button class="primary" data-action="backup-show">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
+      <div class="menu-wrap">
+        <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+        <div class="menu-dropdown" hidden>
+          <button data-action="restore-show">Restore</button>
+          <button data-action="clean-show">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+          <button data-action="dryrun-show">Dry Run</button>
+          <button class="danger" data-action="clear-show">Clear</button>
+        </div>
+      </div>
+    </div>
+    <p class="item-sub">Expand this show on the left to browse its seasons and episodes.</p>
+  `;
+
+  wirePosterImages(panel);
+  wireMenus(panel);
+  panel.querySelector('[data-action="close-detail"]').addEventListener("click", () => {
+    document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
+    resetDetailPanel();
+  });
+  panel.querySelector('[data-action="scan-show"]').addEventListener("click", () => {
+    if (
+      show.scanned_count > 0 &&
+      !confirm(`Rescan all episodes in "${show.name}"? This re-extracts chapters and mediainfo from the files on disk, overwriting the current scan data. Backed-up data is not affected.`)
+    ) {
+      return;
+    }
+    startJob(`/api/shows/${showId}/scan`, () => afterShowMutation(showId));
+  });
+  panel.querySelector('[data-action="backup-show"]').addEventListener("click", () => {
+    if (
+      show.backed_up_count > 0 &&
+      !confirm(`Re-backup all episodes in "${show.name}"? This overwrites the existing backup with the current scan data.`)
+    ) {
+      return;
+    }
+    startJob(`/api/shows/${showId}/backup`, () => afterShowMutation(showId));
+  });
+  panel.querySelector('[data-action="restore-show"]').addEventListener("click", () => {
+    if (!confirm(`Restore chapters for all episodes in "${show.name}"? This overwrites the MKV files on disk with the stored chapters.`)) {
+      return;
+    }
+    startJob(`/api/shows/${showId}/restore`, () => selectLibrary(state.selectedLibraryId));
+  });
+  panel.querySelector('[data-action="clean-show"]').addEventListener("click", () => {
+    if (
+      show.cleaned_count > 0 &&
+      !confirm(`Re-clean up all episodes in "${show.name}"? This rewrites track languages/names and container metadata in every MKV file in this show.`)
+    ) {
+      return;
+    }
+    startJob(`/api/cleanup/shows/${showId}/clean`, () => afterShowMutation(showId));
+  });
+  panel.querySelector('[data-action="dryrun-show"]').addEventListener("click", () => {
+    startJob(withDryRun(`/api/cleanup/shows/${showId}/clean`), (job) => openDryRunResults(job));
+  });
+  panel.querySelector('[data-action="clear-show"]').addEventListener("click", async () => {
+    if (!confirm(`Clear all backup data for "${show.name}"? This cannot be undone. Files on disk and the scan database are never touched.`)) {
+      return;
+    }
+    try {
+      await api(`/api/shows/${showId}`, { method: "DELETE" });
+      toast(`Cleared backup for "${show.name}"`, "ok");
+      await afterShowMutation(showId);
+    } catch (err) {
+      toast(`Failed to clear: ${err.message}`, "error");
+    }
+  });
+}
+
+async function renderEpisodeDetail(episodeId) {
+  const panel = document.getElementById("detail-panel");
+  panel.innerHTML = '<p class="placeholder-text">Loading episode...</p>';
   let ep;
   try {
     ep = await api(`/api/episodes/${episodeId}`);
   } catch (err) {
     toast(`Failed to load episode: ${err.message}`, "error");
-    modalRoot.innerHTML = "";
+    resetDetailPanel();
     return;
   }
+  state.detailKind = "episode";
+  state.detailId = episodeId;
 
   const scanPanelHtml = `
     ${buildChaptersSection("scan-chapters", ep.chapters)}
@@ -839,70 +963,66 @@ async function openEpisodeDetail(episodeId) {
     : '<p class="item-sub">No backup stored yet. Back up this episode to see it here.</p>';
 
   const hasScan = Boolean(ep.last_scanned_at);
-  modalRoot.innerHTML = `
-    <div class="modal-backdrop" id="modal-backdrop">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h3>
-          <button data-action="close-modal">Close</button>
-        </div>
-        <p class="item-sub">${escapeHtml(ep.path)}</p>
-        <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))} • Cleaned up: ${escapeHtml(formatTimestamp(ep.cleaned_at))}</p>
-        ${ep.cleanup_ok === false ? `<p class="item-sub" style="color:var(--danger);">Cleanup failed: ${escapeHtml(ep.cleanup_error || "unknown error")}</p>` : ""}
-        <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
-          <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
-          <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
-          <div class="menu-wrap">
-            <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
-            <div class="menu-dropdown" hidden>
-              <button data-action="restore-episode">Restore chapters</button>
-              <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
-              <button data-action="dryrun-episode">Dry Run</button>
-            </div>
-          </div>
+  panel.innerHTML = `
+    <div class="detail-panel-header">
+      <h2 style="word-break:break-all;">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h2>
+      <button data-action="close-detail" aria-label="Close" title="Close">×</button>
+    </div>
+    <p class="item-sub">${escapeHtml(ep.path)}</p>
+    <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))} • Cleaned up: ${escapeHtml(formatTimestamp(ep.cleaned_at))}</p>
+    ${ep.cleanup_ok === false ? `<p class="item-sub" style="color:var(--danger);">Cleanup failed: ${escapeHtml(ep.cleanup_error || "unknown error")}</p>` : ""}
+    <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
+      <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
+      <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
+      <div class="menu-wrap">
+        <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+        <div class="menu-dropdown" hidden>
+          <button data-action="restore-episode">Restore chapters</button>
+          <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
+          <button data-action="dryrun-episode">Dry Run</button>
           <button class="danger" data-action="clear-episode-backup">Clear Backup</button>
         </div>
-        <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
-          <button type="button" class="tab-btn active" data-toggle-group="episode-view" data-toggle-key="scan">Scanned Data</button>
-          <button type="button" class="tab-btn" data-toggle-group="episode-view" data-toggle-key="backup">Backup Data</button>
-        </nav>
-        <div data-panel-group="episode-view" data-panel-key="scan">${scanPanelHtml}</div>
-        <div data-panel-group="episode-view" data-panel-key="backup" style="display:none;">${backupPanelHtml}</div>
       </div>
     </div>
+    <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
+      <button type="button" class="tab-btn active" data-toggle-group="episode-view" data-toggle-key="scan">Scanned Data</button>
+      <button type="button" class="tab-btn" data-toggle-group="episode-view" data-toggle-key="backup">Backup Data</button>
+    </nav>
+    <div data-panel-group="episode-view" data-panel-key="scan">${scanPanelHtml}</div>
+    <div data-panel-group="episode-view" data-panel-key="backup" style="display:none;">${backupPanelHtml}</div>
   `;
 
-  document.getElementById("modal-backdrop").addEventListener("click", (e) => {
-    if (e.target.id === "modal-backdrop") closeModal();
+  wireToggleGroups(panel);
+  wireMenus(panel);
+  panel.querySelector('[data-action="close-detail"]').addEventListener("click", () => {
+    document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
+    resetDetailPanel();
   });
-  wireToggleGroups(modalRoot);
-  wireMenus(modalRoot);
-  modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
-  modalRoot.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
+  panel.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
     if (hasScan && !confirm(`Rescan "${ep.filename}"? This re-extracts chapters and mediainfo from the file on disk, overwriting the current scan data. Backed-up data is not affected.`)) {
       return;
     }
     startJob(`/api/episodes/${episodeId}/scan`, () => {
-      openEpisodeDetail(episodeId);
+      renderEpisodeDetail(episodeId);
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
     });
   });
-  modalRoot.querySelector('[data-action="backup-episode"]').addEventListener("click", () => {
+  panel.querySelector('[data-action="backup-episode"]').addEventListener("click", () => {
     if (ep.has_backup && !confirm(`Re-backup "${ep.filename}"? This overwrites the existing backup with the current scan data.`)) {
       return;
     }
     startJob(`/api/episodes/${episodeId}/backup`, () => {
-      openEpisodeDetail(episodeId);
+      renderEpisodeDetail(episodeId);
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
     });
   });
-  modalRoot.querySelector('[data-action="restore-episode"]').addEventListener("click", () => {
+  panel.querySelector('[data-action="restore-episode"]').addEventListener("click", () => {
     if (!confirm(`Restore chapters for "${ep.filename}"? This overwrites the file on disk with the stored chapters.`)) {
       return;
     }
     startJob(`/api/episodes/${episodeId}/restore`);
   });
-  modalRoot.querySelector('[data-action="clean-episode"]').addEventListener("click", () => {
+  panel.querySelector('[data-action="clean-episode"]').addEventListener("click", () => {
     if (
       ep.has_cleanup &&
       !confirm(`Re-clean up "${ep.filename}"? This rewrites track languages/names and container metadata in the file on disk.`)
@@ -910,14 +1030,14 @@ async function openEpisodeDetail(episodeId) {
       return;
     }
     startJob(`/api/cleanup/episodes/${episodeId}/clean`, () => {
-      openEpisodeDetail(episodeId);
+      renderEpisodeDetail(episodeId);
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
     });
   });
-  modalRoot.querySelector('[data-action="dryrun-episode"]').addEventListener("click", () => {
+  panel.querySelector('[data-action="dryrun-episode"]').addEventListener("click", () => {
     startJob(withDryRun(`/api/cleanup/episodes/${episodeId}/clean`), (job) => openDryRunResults(job));
   });
-  modalRoot.querySelector('[data-action="clear-episode-backup"]').addEventListener("click", async () => {
+  panel.querySelector('[data-action="clear-episode-backup"]').addEventListener("click", async () => {
     if (!confirm(`Clear the backup for "${ep.filename}"? This cannot be undone. Files on disk and the scan database are never touched.`)) {
       return;
     }
@@ -925,7 +1045,7 @@ async function openEpisodeDetail(episodeId) {
       await api(`/api/episodes/${episodeId}`, { method: "DELETE" });
       toast(`Cleared backup for "${ep.filename}"`, "ok");
       await selectLibrary(state.selectedLibraryId);
-      openEpisodeDetail(episodeId);
+      renderEpisodeDetail(episodeId);
       if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
     } catch (err) {
       toast(`Failed to clear: ${err.message}`, "error");
@@ -1008,8 +1128,9 @@ function initTabs() {
 
 function initSettingsTab() {
   const refreshAfterGlobalOp = () => {
+    // loadLibraries() re-selects the current library itself once the fresh
+    // library list comes back, so nothing further is needed here.
     loadLibraries();
-    if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
   };
 
   document.getElementById("settings-scan-all").addEventListener("click", () => {
@@ -1047,7 +1168,6 @@ function initSettingsTab() {
       await api("/api/database", { method: "DELETE" });
       toast("Database cleared", "ok");
       loadLibraries();
-      if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
     } catch (err) {
       toast(`Failed to clear database: ${err.message}`, "error");
     }
@@ -1106,6 +1226,7 @@ const CLEANUP_STEPS = [
   { key: "clear_date", label: "Clear the container's date tag" },
   { key: "clear_writing_app", label: "Clear the writing-application tag" },
   { key: "clear_muxing_app", label: "Clear the muxing-application tag" },
+  { key: "clear_encoder_tags", label: "Clear encoder library tags (Encoded_Library / Name / Version / Settings)" },
   { key: "force_first_track_japanese", label: "Force the first track to Japanese and clear its name" },
   { key: "set_video_default", label: "Set the default flag on video tracks" },
   { key: "rename_audio_tracks", label: "Rename audio tracks (language, codec, channels)" },
@@ -1243,8 +1364,16 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+function initLibrarySelect() {
+  document.getElementById("library-select").addEventListener("change", (e) => {
+    const id = Number(e.target.value);
+    if (id) selectLibrary(id);
+  });
+}
+
 initTheme();
 initTabs();
+initLibrarySelect();
 initSettingsTab();
 loadLibraries();
 resumeActiveJobs();

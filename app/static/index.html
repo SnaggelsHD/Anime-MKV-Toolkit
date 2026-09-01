@@ -13,18 +13,20 @@
       <button type="button" class="tab-btn active" data-tab="library">Library</button>
       <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     </nav>
+    <select id="library-select" aria-label="Library" title="Switch library"></select>
     <label class="theme-switch" title="Toggle dark mode">
       <input type="checkbox" id="theme-toggle">
       <span class="slider"></span>
     </label>
   </header>
   <main id="view-library">
-    <section class="panel">
-      <h2>Libraries</h2>
-      <div id="library-list">Loading...</div>
+    <section class="panel" id="shows-panel">
+      <div id="library-summary">Loading...</div>
+      <h2>Shows</h2>
+      <div id="shows-list"></div>
     </section>
-    <section class="panel" id="show-detail">
-      <p id="show-detail-placeholder">Select a library to see its shows.</p>
+    <section class="panel" id="detail-panel">
+      <p class="placeholder-text">Select a show or episode to see its details.</p>
     </section>
   </main>
   <main id="view-settings" style="display:none;">

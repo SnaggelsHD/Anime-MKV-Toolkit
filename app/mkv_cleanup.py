@@ -7,6 +7,8 @@ this module returns structured results instead of logging to the console.
 import json
 import os
 import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,6 +53,25 @@ CHANNEL_LAYOUTS = {
     8: "7.1",
 }
 
+# The MediaInfo fields Encoded_Library / Encoded_Library_Name /
+# Encoded_Library_Version / Encoded_Library_Settings are all derived from a
+# single Matroska SimpleTag - conventionally named ENCODER (e.g. embedded by
+# ffmpeg/libavformat) - that lives in the file's *global* tags, separate from
+# the writing-application/muxing-application segment-info fields mkvpropedit
+# edits directly. Some tools may write it under one of the other names below.
+ENCODER_TAG_NAMES = {
+    "ENCODER",
+    "ENCODED_LIBRARY",
+    "ENCODED_LIBRARY_NAME",
+    "ENCODED_LIBRARY_VERSION",
+    "ENCODED_LIBRARY_SETTINGS",
+}
+
+# <Targets> child elements that mark a <Tag> block as scoped to something
+# other than the whole file (a specific track/edition/chapter/attachment).
+# A <Tag> with none of these is a *global* tag block.
+TARGET_UID_TAGS = {"TrackUID", "EditionUID", "ChapterUID", "AttachmentUID"}
+
 
 class MkvCleanupError(RuntimeError):
     pass
@@ -70,6 +91,10 @@ class FilePlan:
     edits: list[PlannedEdit] = field(default_factory=list)
     summaries: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    has_tags_edit: bool = False
+    # None + has_tags_edit=True means "delete the file's global tags entirely";
+    # a string means "replace the global tags with this XML".
+    tags_xml: str | None = None
 
 
 def get_mkvmerge_json(path: str) -> dict[str, Any]:
@@ -121,11 +146,102 @@ def is_commentary(props: dict[str, Any]) -> bool:
     return value in (True, 1, "1", "true", "True")
 
 
+def _extract_tags_root(path: str) -> ET.Element | None:
+    """Run mkvextract to pull the file's Matroska tags as XML and parse it.
+    Returns the <Tags> root element, or None if the file has no tags, or
+    mkvextract/parsing fails - treated as "nothing to clean" rather than an
+    error, since not every file has tags."""
+    fd, tmp_path = tempfile.mkstemp(suffix=".xml")
+    os.close(fd)
+    try:
+        proc = subprocess.run(
+            ["mkvextract", path, "tags", tmp_path],
+            capture_output=True,
+            encoding="utf-8",
+            timeout=TIMEOUT,
+        )
+        if proc.returncode != 0:
+            return None
+        try:
+            return ET.parse(tmp_path).getroot()
+        except ET.ParseError:
+            return None
+    except FileNotFoundError:
+        return None
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def _is_global_tag(tag_el: ET.Element) -> bool:
+    targets = tag_el.find("Targets")
+    if targets is None:
+        return True
+    return not any(child.tag in TARGET_UID_TAGS for child in targets)
+
+
+def plan_encoder_tag_removal(path: str) -> tuple[list[str], str | None, bool]:
+    """Inspect the file's global Matroska tags for encoder-library entries.
+    Returns (summary_lines, replacement_xml, changed). `changed` is False if
+    there was nothing to remove (skip the tags edit entirely).
+    `replacement_xml` is the XML to hand to mkvpropedit's --tags global:<file>,
+    or None if the global tags should be deleted outright (--tags global: with
+    no file) because nothing but encoder tags was left in them. Per-track tag
+    blocks (mkvmerge's BPS/DURATION/... statistics) are never touched."""
+    root = _extract_tags_root(path)
+    if root is None:
+        return [], None, False
+
+    removed_names: list[str] = []
+    surviving_global_tags: list[ET.Element] = []
+    changed = False
+
+    for tag_el in root.findall("Tag"):
+        if not _is_global_tag(tag_el):
+            continue
+        kept_simples = []
+        for simple in tag_el.findall("Simple"):
+            name_el = simple.find("Name")
+            name = (name_el.text or "").strip().upper() if name_el is not None else ""
+            if name in ENCODER_TAG_NAMES:
+                removed_names.append(name)
+                changed = True
+            else:
+                kept_simples.append(simple)
+        if kept_simples:
+            new_tag = ET.Element("Tag")
+            # Preserve the original Targets content (e.g. TargetTypeValue)
+            # rather than dropping it - only the matched Simple entries and
+            # the file's per-track tag blocks are meant to change.
+            original_targets = tag_el.find("Targets")
+            new_tag.append(original_targets if original_targets is not None else ET.Element("Targets"))
+            for simple in kept_simples:
+                new_tag.append(simple)
+            surviving_global_tags.append(new_tag)
+
+    if not changed:
+        return [], None, False
+
+    summary = [f"tags -> cleared {name}" for name in sorted(set(removed_names))]
+
+    if not surviving_global_tags:
+        return summary, None, True
+
+    new_root = ET.Element("Tags")
+    for tag_el in surviving_global_tags:
+        new_root.append(tag_el)
+    xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(new_root, encoding="unicode")
+    return summary, xml_str, True
+
+
 DEFAULT_STEPS: dict[str, bool] = {
     "set_title": True,
     "clear_date": True,
     "clear_writing_app": True,
     "clear_muxing_app": True,
+    "clear_encoder_tags": True,
     "force_first_track_japanese": True,
     "set_video_default": True,
     "rename_audio_tracks": True,
@@ -157,6 +273,12 @@ def inspect_file(
     if steps["clear_muxing_app"]:
         plan.edits.append(PlannedEdit("info", "set", "muxing-application="))
         plan.summaries.append("muxing-application -> ")
+    if steps["clear_encoder_tags"]:
+        tag_summary, tags_xml, tags_changed = plan_encoder_tag_removal(path)
+        if tags_changed:
+            plan.has_tags_edit = True
+            plan.tags_xml = tags_xml
+            plan.summaries.extend(tag_summary)
 
     tracks = data.get("tracks", [])
 
@@ -223,10 +345,26 @@ def apply_plan(plan: FilePlan) -> tuple[str, str, int]:
         elif edit.action == "delete" and edit.value is not None:
             cmd.extend(["--delete", edit.value])
 
+    tags_tmp_path = None
+    if plan.has_tags_edit:
+        if plan.tags_xml is None:
+            cmd.extend(["--tags", "global:"])
+        else:
+            fd, tags_tmp_path = tempfile.mkstemp(suffix=".xml")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(plan.tags_xml)
+            cmd.extend(["--tags", f"global:{tags_tmp_path}"])
+
     try:
         proc = subprocess.run(cmd, capture_output=True, encoding="utf-8", timeout=TIMEOUT)
     except FileNotFoundError as exc:
         raise MkvCleanupError("mkvpropedit is not installed") from exc
+    finally:
+        if tags_tmp_path is not None:
+            try:
+                os.remove(tags_tmp_path)
+            except OSError:
+                pass
     return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
 
 
@@ -254,13 +392,15 @@ def clean_file(
     except MkvCleanupError as exc:
         return {"ok": False, "error": str(exc), "summary": [], "warnings": [], "edits_count": 0}
 
+    edits_count = len(plan.edits) + (1 if plan.has_tags_edit else 0)
+
     if dry_run:
         return {
             "ok": True,
             "error": None,
             "summary": plan.summaries,
             "warnings": plan.warnings,
-            "edits_count": len(plan.edits),
+            "edits_count": edits_count,
         }
 
     stdout, stderr, code = apply_plan(plan)
@@ -271,7 +411,7 @@ def clean_file(
             "error": error,
             "summary": plan.summaries,
             "warnings": plan.warnings,
-            "edits_count": len(plan.edits),
+            "edits_count": edits_count,
         }
 
     return {
@@ -279,5 +419,5 @@ def clean_file(
         "error": None,
         "summary": plan.summaries,
         "warnings": plan.warnings,
-        "edits_count": len(plan.edits),
+        "edits_count": edits_count,
     }

@@ -89,6 +89,15 @@ Two separate SQLite databases live under `./data` on the host (mounted to
 
 ## Using the UI
 
+The Library tab is a library switcher (top right, next to dark mode) plus a
+two-column layout that uses the full window width: shows for the selected
+library on the left (expandable to seasons/episodes in place), and a detail
+panel on the right that shows whatever you last clicked — a show overview, or
+a full episode view (chapters, track metadata, timestamps). Only Scan and
+Backup stay as standalone buttons at each level; every other action (Restore,
+Clean, Dry Run, and the destructive Clear/Clear Backup) lives behind a "☰"
+menu per row to keep the row itself compact.
+
 The workflow is **scan, then backup, then (optionally, later) restore**:
 
 1. **Scan** a library, show, season, or episode (or "Scan all libraries" in
@@ -112,10 +121,13 @@ Additional UI notes:
   scanned and backed up. A show or episode that used to exist on disk but
   doesn't anymore is flagged **MISSING** rather than removed — rescan it once
   the files are back to clear the flag.
-- Clicking an episode row shows its chapters and track metadata (each toggles
-  between a parsed table and the raw stored data — chapter XML, or the
-  complete mediainfo JSON report), along with its last-scanned and backed-up
-  timestamps.
+- Clicking a show shows its overview in the right-hand detail panel (poster,
+  counts, its own action menu) without losing the expanded season/episode
+  list on the left. Clicking an episode replaces that panel with its chapters
+  and track metadata (each toggles between a parsed table and the raw stored
+  data — chapter XML, or the complete mediainfo JSON report), along with its
+  last-scanned and backed-up timestamps. The "×" in the panel's corner clears
+  the selection back to a placeholder.
 - **Clearing** data (per episode/season/show, or the whole database, from
   Settings) only removes it from the **backup** database — the scan database
   is never touched, so you can immediately re-backup from what's already been
@@ -151,6 +163,13 @@ container metadata from anime MKV rips — the same rules a prior standalone
 
 - Sets the container title to the filename, and clears the `date`,
   `writing-application`, and `muxing-application` tags.
+- Clears encoder-library tags (what MediaInfo shows as `Encoded_Library` /
+  `Encoded_Library_Name` / `Encoded_Library_Version` / `Encoded_Library_Settings`
+  — typically an `ENCODER` tag embedded by ffmpeg/libavformat). These live in
+  the file's Matroska tags, not the segment-info fields above, so they need a
+  separate `mkvpropedit --tags` edit; only that one tag is removed — any other
+  global tags (e.g. `PUBLISHER`, `NAME`) and all per-track statistics tags are
+  left untouched.
 - Forces the **first track** in the file to `language=jpn` and clears its
   name (matches the original script's behavior for typical Japanese-audio-
   first anime rips — this applies regardless of that track's actual type).

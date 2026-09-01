@@ -22,6 +22,7 @@ STEP_TOGGLE_COLUMNS = [
     "clear_date",
     "clear_writing_app",
     "clear_muxing_app",
+    "clear_encoder_tags",
     "force_first_track_japanese",
     "set_video_default",
     "rename_audio_tracks",
