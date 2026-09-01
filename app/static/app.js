@@ -2,7 +2,6 @@ const state = {
   libraries: [],
   selectedLibraryId: null,
   shows: [],
-  expandedShowIds: new Set(),
   episodes: [],
   detailKind: null, // "show" | "episode" | null
   detailId: null,
@@ -340,7 +339,6 @@ function renderLibrarySummary() {
 async function selectLibrary(libraryId) {
   const changingLibrary = state.selectedLibraryId !== libraryId;
   if (changingLibrary) {
-    state.expandedShowIds.clear();
     resetDetailPanel();
   }
   state.selectedLibraryId = libraryId;
@@ -355,11 +353,6 @@ async function selectLibrary(libraryId) {
     return;
   }
   renderShowsList();
-  for (const showId of Array.from(state.expandedShowIds)) {
-    if (state.shows.some((s) => s.id === showId)) {
-      toggleShowEpisodes(showId, true);
-    }
-  }
   if (state.detailKind === "show" && !changingLibrary) {
     renderShowOverview(state.detailId);
   }
@@ -368,22 +361,21 @@ async function selectLibrary(libraryId) {
 function afterShowMutation(showId) {
   // selectLibrary() re-renders the current show overview itself (see its
   // trailing check) if this show is what's showing in the detail panel.
-  return selectLibrary(state.selectedLibraryId).then(() => toggleShowEpisodes(showId, true));
+  return selectLibrary(state.selectedLibraryId);
 }
 
 function renderShowsList() {
   const list = document.getElementById("shows-list");
 
-  // Show rows carry no action buttons of their own - clicking a row always
-  // opens the show overview in the detail panel, which has the full action
-  // set. Keeping them only there avoids showing every action twice.
+  // Show rows carry no action buttons or expandable season list of their
+  // own - clicking a row opens the show overview (with its seasons and
+  // episodes) in the detail panel, which has the full action set.
   const showsHtml = state.shows
     .map(
       (show) => `
-      <div class="show-item${state.expandedShowIds.has(show.id) ? " expanded" : ""}${state.detailKind === "show" && state.detailId === show.id ? " selected" : ""}" data-show-item="${show.id}">
+      <div class="show-item${state.detailKind === "show" && state.detailId === show.id ? " selected" : ""}">
         <div class="item-row" data-show-id="${show.id}">
           <div class="item-name-wrap">
-            <span class="chevron">▸</span>
             <img class="poster-thumb" data-poster-src="/api/shows/${show.id}/poster" alt="">
             <div>
               <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
@@ -391,7 +383,6 @@ function renderShowsList() {
             </div>
           </div>
         </div>
-        <div class="episodes-container" id="episodes-${show.id}"></div>
       </div>`
     )
     .join("");
@@ -401,37 +392,11 @@ function renderShowsList() {
   wirePosterImages(list);
   list.querySelectorAll('[data-show-id]').forEach((el) => {
     el.addEventListener("click", () => {
-      const id = Number(el.dataset.showId);
-      toggleShowEpisodes(id);
-      document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
       document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
       el.closest(".show-item")?.classList.add("selected");
-      renderShowOverview(id);
+      renderShowOverview(Number(el.dataset.showId));
     });
   });
-}
-
-async function toggleShowEpisodes(showId, forceReload = false) {
-  const container = document.getElementById(`episodes-${showId}`);
-  if (!container) return;
-  const showItemEl = document.querySelector(`[data-show-item="${showId}"]`);
-
-  if (state.expandedShowIds.has(showId) && !forceReload) {
-    state.expandedShowIds.delete(showId);
-    showItemEl?.classList.remove("expanded");
-    container.innerHTML = "";
-    return;
-  }
-  state.expandedShowIds.add(showId);
-  showItemEl?.classList.add("expanded");
-  container.innerHTML = '<p class="placeholder-text">Loading episodes...</p>';
-  try {
-    state.episodes = await api(`/api/shows/${showId}/episodes`);
-  } catch (err) {
-    container.innerHTML = `<p class="placeholder-text">Failed to load episodes: ${escapeHtml(err.message)}</p>`;
-    return;
-  }
-  renderEpisodes(showId, container);
 }
 
 function renderEpisodes(showId, container) {
@@ -481,9 +446,8 @@ function renderEpisodes(showId, container) {
       if (!ep.has_cleanup) cleanFlag = '<span class="flag-missing">cleaned ✗</span>';
       else if (ep.cleanup_ok) cleanFlag = '<span class="flag-ok">cleaned ✓</span>';
       else cleanFlag = '<span class="flag-missing">cleanup failed ✗</span>';
-      const epSelected = state.detailKind === "episode" && state.detailId === ep.id;
       html += `
-        <div class="episode-row${epSelected ? " selected" : ""}" data-episode-id="${ep.id}">
+        <div class="episode-row" data-episode-id="${ep.id}">
           <div class="episode-name">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
           <div class="flags">
             <span class="${ep.has_scan ? "flag-ok" : "flag-missing"}">${ep.has_scan ? "scanned ✓" : "scanned ✗"}</span>
@@ -499,12 +463,7 @@ function renderEpisodes(showId, container) {
   wirePosterImages(container);
   wireMenus(container);
   container.querySelectorAll("[data-episode-id]").forEach((el) =>
-    el.addEventListener("click", () => {
-      document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
-      document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
-      el.classList.add("selected");
-      renderEpisodeDetail(Number(el.dataset.episodeId));
-    })
+    el.addEventListener("click", () => renderEpisodeDetail(Number(el.dataset.episodeId)))
   );
   container.querySelectorAll('[data-action="scan-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
@@ -516,7 +475,7 @@ function renderEpisodes(showId, container) {
       ) {
         return;
       }
-      startJob(`/api/shows/${showId}/season/scan${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+      startJob(`/api/shows/${showId}/season/scan${seasonQuery(btn.dataset.season)}`, () => afterShowMutation(showId));
     })
   );
   container.querySelectorAll('[data-action="backup-season"]').forEach((btn) =>
@@ -529,7 +488,7 @@ function renderEpisodes(showId, container) {
       ) {
         return;
       }
-      startJob(`/api/shows/${showId}/season/backup${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+      startJob(`/api/shows/${showId}/season/backup${seasonQuery(btn.dataset.season)}`, () => afterShowMutation(showId));
     })
   );
   container.querySelectorAll('[data-action="clean-season"]').forEach((btn) =>
@@ -542,7 +501,7 @@ function renderEpisodes(showId, container) {
       ) {
         return;
       }
-      startJob(`/api/cleanup/shows/${showId}/season/clean${seasonQuery(btn.dataset.season)}`, () => toggleShowEpisodes(showId, true));
+      startJob(`/api/cleanup/shows/${showId}/season/clean${seasonQuery(btn.dataset.season)}`, () => afterShowMutation(showId));
     })
   );
   container.querySelectorAll('[data-action="dryrun-season"]').forEach((btn) =>
@@ -564,8 +523,7 @@ function renderEpisodes(showId, container) {
       try {
         await api(`/api/shows/${showId}/season${seasonQuery(btn.dataset.season)}`, { method: "DELETE" });
         toast(`Cleared backup for ${label}`, "ok");
-        await selectLibrary(state.selectedLibraryId);
-        toggleShowEpisodes(showId, true);
+        await afterShowMutation(showId);
       } catch (err) {
         toast(`Failed to clear: ${err.message}`, "error");
       }
@@ -788,7 +746,8 @@ async function renderShowOverview(showId) {
         </div>
       </div>
     </div>
-    <p class="item-sub">Expand this show on the left to browse its seasons and episodes.</p>
+    <h2 style="margin-top:1rem;">Seasons</h2>
+    <div id="show-episodes-list"><p class="placeholder-text">Loading episodes...</p></div>
   `;
 
   wirePosterImages(panel);
@@ -845,6 +804,15 @@ async function renderShowOverview(showId) {
       toast(`Failed to clear: ${err.message}`, "error");
     }
   });
+
+  const episodesContainer = document.getElementById("show-episodes-list");
+  try {
+    state.episodes = await api(`/api/shows/${showId}/episodes`);
+  } catch (err) {
+    episodesContainer.innerHTML = `<p class="placeholder-text">Failed to load episodes: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  renderEpisodes(showId, episodesContainer);
 }
 
 async function renderEpisodeDetail(episodeId) {
@@ -877,7 +845,9 @@ async function renderEpisodeDetail(episodeId) {
     : '<p class="item-sub">No backup stored yet. Back up this episode to see it here.</p>';
 
   const hasScan = Boolean(ep.last_scanned_at);
+  const showName = state.shows.find((s) => s.id === ep.show_id)?.name;
   panel.innerHTML = `
+    <button type="button" class="back-link" data-action="back-to-show">${showName ? `‹ Back to ${escapeHtml(showName)}` : "‹ Back"}</button>
     <div class="detail-panel-header">
       <h2 style="word-break:break-all;">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h2>
       <button data-action="close-detail" aria-label="Close" title="Close">×</button>
@@ -902,27 +872,24 @@ async function renderEpisodeDetail(episodeId) {
   `;
 
   wireToggleGroups(panel);
+  panel.querySelector('[data-action="back-to-show"]').addEventListener("click", () => {
+    renderShowOverview(ep.show_id);
+  });
   panel.querySelector('[data-action="close-detail"]').addEventListener("click", () => {
-    document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
+    document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
     resetDetailPanel();
   });
   panel.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
     if (hasScan && !confirm(`Rescan "${ep.filename}"? This re-extracts chapters and mediainfo from the file on disk, overwriting the current scan data. Backed-up data is not affected.`)) {
       return;
     }
-    startJob(`/api/episodes/${episodeId}/scan`, () => {
-      renderEpisodeDetail(episodeId);
-      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
-    });
+    startJob(`/api/episodes/${episodeId}/scan`, () => renderEpisodeDetail(episodeId));
   });
   panel.querySelector('[data-action="backup-episode"]').addEventListener("click", () => {
     if (ep.has_backup && !confirm(`Re-backup "${ep.filename}"? This overwrites the existing backup with the current scan data.`)) {
       return;
     }
-    startJob(`/api/episodes/${episodeId}/backup`, () => {
-      renderEpisodeDetail(episodeId);
-      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
-    });
+    startJob(`/api/episodes/${episodeId}/backup`, () => renderEpisodeDetail(episodeId));
   });
   panel.querySelector('[data-action="restore-episode"]').addEventListener("click", () => {
     if (!confirm(`Restore chapters for "${ep.filename}"? This overwrites the file on disk with the stored chapters.`)) {
@@ -937,10 +904,7 @@ async function renderEpisodeDetail(episodeId) {
     ) {
       return;
     }
-    startJob(`/api/cleanup/episodes/${episodeId}/clean`, () => {
-      renderEpisodeDetail(episodeId);
-      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
-    });
+    startJob(`/api/cleanup/episodes/${episodeId}/clean`, () => renderEpisodeDetail(episodeId));
   });
   panel.querySelector('[data-action="dryrun-episode"]').addEventListener("click", () => {
     startJob(withDryRun(`/api/cleanup/episodes/${episodeId}/clean`), (job) => openDryRunResults(job));
@@ -954,7 +918,6 @@ async function renderEpisodeDetail(episodeId) {
       toast(`Cleared backup for "${ep.filename}"`, "ok");
       await selectLibrary(state.selectedLibraryId);
       renderEpisodeDetail(episodeId);
-      if (state.expandedShowIds.has(ep.show_id)) toggleShowEpisodes(ep.show_id, true);
     } catch (err) {
       toast(`Failed to clear: ${err.message}`, "error");
     }

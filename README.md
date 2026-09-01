@@ -91,17 +91,20 @@ Two separate SQLite databases live under `./data` on the host (mounted to
 
 The Library tab is a library switcher (top right, next to dark mode) plus a
 two-column layout, capped at 80% of the window width so there's a margin on
-both sides: shows for the selected library on the left (expandable to
-seasons/episodes in place), and a detail panel on the right that shows
-whatever you last clicked, a show overview or a full episode view (chapters
-and track metadata side by side, plus timestamps). Show rows themselves carry
-no buttons since clicking one always opens that same action set in the detail
-panel; season and library rows keep Scan/Backup visible with everything else
-(Clean, Dry Run, Clear) behind a "☰" menu, and every button is labeled with
-its scope (e.g. "Scan Show", "Rescan Season", "Backup Episode") so it's clear
-what it acts on. The episode detail view is the one exception to the "☰"
-menu pattern: all of its actions (Scan, Backup, Restore, Clean, Dry Run,
-Clear Backup) sit in one flat row.
+both sides: a flat list of shows for the selected library on the left, and a
+drill-down detail panel on the right. Clicking a show opens its overview
+there (poster, counts, its own actions, and its seasons/episodes); clicking
+one of those episodes replaces that same panel with the full episode view
+(chapters and track metadata side by side, timestamps, actions), with a
+"‹ Back to \<show\>" link at the top to return to the show's season/episode
+list. Show rows in the left list carry no buttons of their own since
+clicking one always opens that action set in the detail panel; season and
+library rows keep Scan/Backup visible with everything else (Clean, Dry Run,
+Clear) behind a "☰" menu, and every button is labeled with its scope (e.g.
+"Scan Show", "Rescan Season", "Backup Episode") so it's clear what it acts
+on. The episode detail view is the one exception to the "☰" menu pattern:
+all of its actions (Scan, Backup, Restore, Clean, Dry Run, Clear Backup) sit
+in one flat row.
 
 The workflow is **scan, then backup, then (optionally, later) restore**:
 
@@ -126,12 +129,12 @@ Additional UI notes:
   scanned and backed up. A show or episode that used to exist on disk but
   doesn't anymore is flagged **MISSING** rather than removed — rescan it once
   the files are back to clear the flag.
-- Clicking a show shows its overview in the right-hand detail panel (poster,
-  counts, its own action row) without losing the expanded season/episode
-  list on the left. Clicking an episode replaces that panel with its chapters
-  and track metadata side by side (each toggles between a parsed table and
-  the raw stored data — chapter XML, or the complete mediainfo JSON report),
-  along with its last-scanned and backed-up timestamps. The "×" in the
+- Clicking a show shows its overview, seasons, and episodes in the
+  right-hand detail panel. Clicking an episode there replaces that panel
+  with its chapters and track metadata side by side (each toggles between a
+  parsed table and the raw stored data — chapter XML, or the complete
+  mediainfo JSON report), along with its last-scanned and backed-up
+  timestamps, and a back link to return to the show. The "×" in the
   panel's corner clears the selection back to a placeholder.
 - **Clearing** data (per episode/season/show, or the whole database, from
   Settings) only removes it from the **backup** database — the scan database

@@ -184,7 +184,6 @@ h2 {
 }
 .item-row:hover { background: var(--hover); }
 
-.show-item.expanded > .item-row,
 .show-item.selected > .item-row {
   background: var(--accent-soft);
 }
@@ -195,15 +194,6 @@ h2 {
   gap: 0.5rem;
   min-width: 0;
 }
-
-.chevron {
-  display: inline-block;
-  flex-shrink: 0;
-  color: var(--muted);
-  transition: transform 0.15s;
-  font-size: 0.75rem;
-}
-.show-item.expanded .chevron { transform: rotate(90deg); color: var(--accent); }
 
 .item-name { font-weight: 600; }
 .item-sub { font-size: 0.8rem; color: var(--muted); }
@@ -311,11 +301,16 @@ h2 {
   min-width: 0;
 }
 
-.episodes-container {
-  margin: 0.25rem 0 0.5rem 0.9rem;
-  padding-left: 0.75rem;
-  border-left: 2px solid var(--border);
+.back-link {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
 }
+.back-link:hover { color: var(--accent); background: transparent; }
 
 button {
   font: inherit;
