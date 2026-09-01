@@ -1097,7 +1097,6 @@ const CLEANUP_STEPS = [
   { key: "clear_date", label: "Clear the container's date tag" },
   { key: "clear_writing_app", label: "Clear the writing-application tag" },
   { key: "clear_muxing_app", label: "Clear the muxing-application tag" },
-  { key: "clear_encoder_tags", label: "Clear encoder library tags (Encoded_Library / Name / Version / Settings)" },
   { key: "force_first_track_japanese", label: "Force the first track to Japanese and clear its name" },
   { key: "set_video_default", label: "Set the default flag on video tracks" },
   { key: "rename_audio_tracks", label: "Rename audio tracks (language, codec, channels)" },

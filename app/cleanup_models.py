@@ -90,7 +90,6 @@ class CleanupSettings(CleanupBase):
     clear_date = Column(Boolean, nullable=False, default=True)
     clear_writing_app = Column(Boolean, nullable=False, default=True)
     clear_muxing_app = Column(Boolean, nullable=False, default=True)
-    clear_encoder_tags = Column(Boolean, nullable=False, default=True)
     force_first_track_japanese = Column(Boolean, nullable=False, default=True)
     set_video_default = Column(Boolean, nullable=False, default=True)
     rename_audio_tracks = Column(Boolean, nullable=False, default=True)

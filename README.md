@@ -171,13 +171,6 @@ container metadata from anime MKV rips — the same rules a prior standalone
 
 - Sets the container title to the filename, and clears the `date`,
   `writing-application`, and `muxing-application` tags.
-- Clears encoder-library tags (what MediaInfo shows as `Encoded_Library` /
-  `Encoded_Library_Name` / `Encoded_Library_Version` / `Encoded_Library_Settings`
-  — typically an `ENCODER` tag embedded by ffmpeg/libavformat). These live in
-  the file's Matroska tags, not the segment-info fields above, so they need a
-  separate `mkvpropedit --tags` edit; only that one tag is removed — any other
-  global tags (e.g. `PUBLISHER`, `NAME`) and all per-track statistics tags are
-  left untouched.
 - Forces the **first track** in the file to `language=jpn` and clears its
   name (matches the original script's behavior for typical Japanese-audio-
   first anime rips — this applies regardless of that track's actual type).
