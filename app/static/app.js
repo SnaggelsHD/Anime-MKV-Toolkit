@@ -298,10 +298,10 @@ function renderLibrarySummary() {
         <div class="menu-wrap">
           <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
           <div class="menu-dropdown" hidden>
-            <button data-action="scan-library">Scan</button>
-            <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
-            <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
-            <button data-action="dryrun-library">Dry Run</button>
+            <button data-action="scan-library">Scan Library</button>
+            <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup Library" : "Backup Library"}</button>
+            <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean Library" : "Clean Library"}</button>
+            <button data-action="dryrun-library">Dry Run Library</button>
           </div>
         </div>
       </div>
@@ -374,6 +374,9 @@ function afterShowMutation(showId) {
 function renderShowsList() {
   const list = document.getElementById("shows-list");
 
+  // Show rows carry no action buttons of their own - clicking a row always
+  // opens the show overview in the detail panel, which has the full action
+  // set. Keeping them only there avoids showing every action twice.
   const showsHtml = state.shows
     .map(
       (show) => `
@@ -387,19 +390,6 @@ function renderShowsList() {
               <div class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</div>
             </div>
           </div>
-          <div class="item-actions">
-            <button data-action="scan-show" data-show-id="${show.id}">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
-            <button class="primary" data-action="backup-show" data-show-id="${show.id}">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
-            <div class="menu-wrap">
-              <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
-              <div class="menu-dropdown" hidden>
-                <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
-                <button data-action="clean-show" data-show-id="${show.id}">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
-                <button data-action="dryrun-show" data-show-id="${show.id}">Dry Run</button>
-                <button class="danger" data-action="clear-show" data-show-id="${show.id}">Clear</button>
-              </div>
-            </div>
-          </div>
         </div>
         <div class="episodes-container" id="episodes-${show.id}"></div>
       </div>`
@@ -409,96 +399,16 @@ function renderShowsList() {
   list.innerHTML = showsHtml || '<p class="placeholder-text">No shows found in this library.</p>';
 
   wirePosterImages(list);
-  wireMenus(list);
   list.querySelectorAll('[data-show-id]').forEach((el) => {
-    if (el.classList.contains("item-row")) {
-      el.addEventListener("click", () => {
-        const id = Number(el.dataset.showId);
-        toggleShowEpisodes(id);
-        document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
-        document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
-        el.closest(".show-item")?.classList.add("selected");
-        renderShowOverview(id);
-      });
-    }
+    el.addEventListener("click", () => {
+      const id = Number(el.dataset.showId);
+      toggleShowEpisodes(id);
+      document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
+      document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
+      el.closest(".show-item")?.classList.add("selected");
+      renderShowOverview(id);
+    });
   });
-  list.querySelectorAll('[data-action="scan-show"]').forEach((btn) =>
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.showId);
-      const show = state.shows.find((s) => s.id === id);
-      if (
-        show.scanned_count > 0 &&
-        !confirm(`Rescan all episodes in "${show.name}"? This re-extracts chapters and mediainfo from the files on disk, overwriting the current scan data. Backed-up data is not affected.`)
-      ) {
-        return;
-      }
-      startJob(`/api/shows/${id}/scan`, () => afterShowMutation(id));
-    })
-  );
-  list.querySelectorAll('[data-action="backup-show"]').forEach((btn) =>
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.showId);
-      const show = state.shows.find((s) => s.id === id);
-      if (
-        show.backed_up_count > 0 &&
-        !confirm(`Re-backup all episodes in "${show.name}"? This overwrites the existing backup with the current scan data.`)
-      ) {
-        return;
-      }
-      startJob(`/api/shows/${id}/backup`, () => afterShowMutation(id));
-    })
-  );
-  list.querySelectorAll('[data-action="restore-show"]').forEach((btn) =>
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.showId);
-      const show = state.shows.find((s) => s.id === id);
-      if (!confirm(`Restore chapters for all episodes in "${show.name}"? This overwrites the MKV files on disk with the stored chapters.`)) {
-        return;
-      }
-      startJob(`/api/shows/${id}/restore`, () => selectLibrary(state.selectedLibraryId));
-    })
-  );
-  list.querySelectorAll('[data-action="clean-show"]').forEach((btn) =>
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.showId);
-      const show = state.shows.find((s) => s.id === id);
-      if (
-        show.cleaned_count > 0 &&
-        !confirm(`Re-clean up all episodes in "${show.name}"? This rewrites track languages/names and container metadata in every MKV file in this show.`)
-      ) {
-        return;
-      }
-      startJob(`/api/cleanup/shows/${id}/clean`, () => afterShowMutation(id));
-    })
-  );
-  list.querySelectorAll('[data-action="dryrun-show"]').forEach((btn) =>
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.showId);
-      startJob(withDryRun(`/api/cleanup/shows/${id}/clean`), (job) => openDryRunResults(job));
-    })
-  );
-  list.querySelectorAll('[data-action="clear-show"]').forEach((btn) =>
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.showId);
-      const show = state.shows.find((s) => s.id === id);
-      if (!confirm(`Clear all backup data for "${show.name}"? This cannot be undone. Files on disk and the scan database are never touched.`)) {
-        return;
-      }
-      try {
-        await api(`/api/shows/${id}`, { method: "DELETE" });
-        toast(`Cleared backup for "${show.name}"`, "ok");
-        await afterShowMutation(id);
-      } catch (err) {
-        toast(`Failed to clear: ${err.message}`, "error");
-      }
-    })
-  );
 }
 
 async function toggleShowEpisodes(showId, forceReload = false) {
@@ -551,17 +461,17 @@ function renderEpisodes(showId, container) {
       <div class="season-heading-row">
         <div class="season-heading-wrap">
           <img class="poster-thumb" ${seasonPosterAttr} alt="">
-          <span class="season-heading">${label} — ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned</span>
+          <span class="season-heading">${label} • ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned</span>
         </div>
         <div class="item-actions">
-          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
-          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup" : "Backup"}</button>
+          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan Season" : "Scan Season"}</button>
+          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup Season" : "Backup Season"}</button>
           <div class="menu-wrap">
             <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
             <div class="menu-dropdown" hidden>
-              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean" : "Clean"}</button>
-              <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run</button>
-              <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear</button>
+              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean Season" : "Clean Season"}</button>
+              <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run Season</button>
+              <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear Season</button>
             </div>
           </div>
         </div>
@@ -856,7 +766,7 @@ async function renderShowOverview(showId) {
   panel.innerHTML = `
     <div class="detail-panel-header">
       <div class="detail-title-wrap">
-        <img class="poster-thumb-lg" data-poster-src="/api/shows/${show.id}/poster" alt="">
+        <img class="poster-thumb poster-thumb-lg" data-poster-src="/api/shows/${show.id}/poster" alt="">
         <div>
           <h2>${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h2>
           <p class="item-sub">${escapeHtml(show.path)}</p>
@@ -866,15 +776,15 @@ async function renderShowOverview(showId) {
       <button data-action="close-detail" aria-label="Close" title="Close">×</button>
     </div>
     <div class="item-actions" style="margin: 0.75rem 0;">
-      <button data-action="scan-show">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
-      <button class="primary" data-action="backup-show">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
+      <button data-action="scan-show">${show.scanned_count > 0 ? "Rescan Show" : "Scan Show"}</button>
+      <button class="primary" data-action="backup-show">${show.backed_up_count > 0 ? "Re-backup Show" : "Backup Show"}</button>
       <div class="menu-wrap">
         <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
         <div class="menu-dropdown" hidden>
-          <button data-action="restore-show">Restore</button>
-          <button data-action="clean-show">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
-          <button data-action="dryrun-show">Dry Run</button>
-          <button class="danger" data-action="clear-show">Clear</button>
+          <button data-action="restore-show">Restore Show</button>
+          <button data-action="clean-show">${show.cleaned_count > 0 ? "Re-clean Show" : "Clean Show"}</button>
+          <button data-action="dryrun-show">Dry Run Show</button>
+          <button class="danger" data-action="clear-show">Clear Show</button>
         </div>
       </div>
     </div>
@@ -952,13 +862,17 @@ async function renderEpisodeDetail(episodeId) {
   state.detailId = episodeId;
 
   const scanPanelHtml = `
-    ${buildChaptersSection("scan-chapters", ep.chapters)}
-    ${buildTrackSection("scan-tracks", ep.track_metadata)}
+    <div class="detail-columns">
+      <div>${buildChaptersSection("scan-chapters", ep.chapters)}</div>
+      <div>${buildTrackSection("scan-tracks", ep.track_metadata)}</div>
+    </div>
   `;
   const backupPanelHtml = ep.has_backup
     ? `
-      ${buildChaptersSection("backup-chapters", ep.backup_chapters)}
-      ${buildTrackSection("backup-tracks", ep.backup_track_metadata)}
+      <div class="detail-columns">
+        <div>${buildChaptersSection("backup-chapters", ep.backup_chapters)}</div>
+        <div>${buildTrackSection("backup-tracks", ep.backup_track_metadata)}</div>
+      </div>
     `
     : '<p class="item-sub">No backup stored yet. Back up this episode to see it here.</p>';
 
@@ -972,17 +886,12 @@ async function renderEpisodeDetail(episodeId) {
     <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))} • Cleaned up: ${escapeHtml(formatTimestamp(ep.cleaned_at))}</p>
     ${ep.cleanup_ok === false ? `<p class="item-sub" style="color:var(--danger);">Cleanup failed: ${escapeHtml(ep.cleanup_error || "unknown error")}</p>` : ""}
     <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
-      <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
-      <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
-      <div class="menu-wrap">
-        <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
-        <div class="menu-dropdown" hidden>
-          <button data-action="restore-episode">Restore chapters</button>
-          <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
-          <button data-action="dryrun-episode">Dry Run</button>
-          <button class="danger" data-action="clear-episode-backup">Clear Backup</button>
-        </div>
-      </div>
+      <button data-action="scan-episode">${hasScan ? "Rescan Episode" : "Scan Episode"}</button>
+      <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup Episode" : "Backup Episode"}</button>
+      <button data-action="restore-episode">Restore Episode</button>
+      <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean Episode" : "Clean Episode"}</button>
+      <button data-action="dryrun-episode">Dry Run Episode</button>
+      <button class="danger" data-action="clear-episode-backup">Clear Episode Backup</button>
     </div>
     <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
       <button type="button" class="tab-btn active" data-toggle-group="episode-view" data-toggle-key="scan">Scanned Data</button>
@@ -993,7 +902,6 @@ async function renderEpisodeDetail(episodeId) {
   `;
 
   wireToggleGroups(panel);
-  wireMenus(panel);
   panel.querySelector('[data-action="close-detail"]').addEventListener("click", () => {
     document.querySelectorAll(".episode-row.selected").forEach((row) => row.classList.remove("selected"));
     resetDetailPanel();

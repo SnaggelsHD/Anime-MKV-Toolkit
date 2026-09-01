@@ -90,13 +90,18 @@ Two separate SQLite databases live under `./data` on the host (mounted to
 ## Using the UI
 
 The Library tab is a library switcher (top right, next to dark mode) plus a
-two-column layout that uses the full window width: shows for the selected
-library on the left (expandable to seasons/episodes in place), and a detail
-panel on the right that shows whatever you last clicked — a show overview, or
-a full episode view (chapters, track metadata, timestamps). Only Scan and
-Backup stay as standalone buttons at each level; every other action (Restore,
-Clean, Dry Run, and the destructive Clear/Clear Backup) lives behind a "☰"
-menu per row to keep the row itself compact.
+two-column layout, capped at 80% of the window width so there's a margin on
+both sides: shows for the selected library on the left (expandable to
+seasons/episodes in place), and a detail panel on the right that shows
+whatever you last clicked, a show overview or a full episode view (chapters
+and track metadata side by side, plus timestamps). Show rows themselves carry
+no buttons since clicking one always opens that same action set in the detail
+panel; season and library rows keep Scan/Backup visible with everything else
+(Clean, Dry Run, Clear) behind a "☰" menu, and every button is labeled with
+its scope (e.g. "Scan Show", "Rescan Season", "Backup Episode") so it's clear
+what it acts on. The episode detail view is the one exception to the "☰"
+menu pattern: all of its actions (Scan, Backup, Restore, Clean, Dry Run,
+Clear Backup) sit in one flat row.
 
 The workflow is **scan, then backup, then (optionally, later) restore**:
 
@@ -108,7 +113,7 @@ The workflow is **scan, then backup, then (optionally, later) restore**:
 2. **Backup** copies already-scanned data into the separate backup database.
    You can only back up an episode after it's been scanned at least once —
    backing up an unscanned episode fails with a clear error, and the "Backup
-   this episode" button in the episode detail view is disabled until it's
+   Episode" button in the episode detail view is disabled until it's
    been scanned.
 3. **Restore** writes the chapters from the **backup** database back into the
    MKV file on disk. This works even if the file was temporarily missing and
@@ -122,12 +127,12 @@ Additional UI notes:
   doesn't anymore is flagged **MISSING** rather than removed — rescan it once
   the files are back to clear the flag.
 - Clicking a show shows its overview in the right-hand detail panel (poster,
-  counts, its own action menu) without losing the expanded season/episode
+  counts, its own action row) without losing the expanded season/episode
   list on the left. Clicking an episode replaces that panel with its chapters
-  and track metadata (each toggles between a parsed table and the raw stored
-  data — chapter XML, or the complete mediainfo JSON report), along with its
-  last-scanned and backed-up timestamps. The "×" in the panel's corner clears
-  the selection back to a placeholder.
+  and track metadata side by side (each toggles between a parsed table and
+  the raw stored data — chapter XML, or the complete mediainfo JSON report),
+  along with its last-scanned and backed-up timestamps. The "×" in the
+  panel's corner clears the selection back to a placeholder.
 - **Clearing** data (per episode/season/show, or the whole database, from
   Settings) only removes it from the **backup** database — the scan database
   is never touched, so you can immediately re-backup from what's already been

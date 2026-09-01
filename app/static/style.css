@@ -139,6 +139,8 @@ header h1 {
 
 main {
   padding: 1rem 1.5rem;
+  max-width: 80%;
+  margin: 0 auto;
 }
 
 #view-library {
@@ -291,6 +293,16 @@ h2 {
   flex-shrink: 0;
 }
 .detail-panel-header [data-action="close-detail"]:hover { color: var(--text); background: var(--hover); }
+
+.detail-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .detail-columns { grid-template-columns: 1fr; }
+}
 
 .season-heading-wrap {
   display: flex;
