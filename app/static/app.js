@@ -1,3 +1,11 @@
+function getStoredHideLockedShows() {
+  try {
+    return localStorage.getItem("hideLockedShows") === "true";
+  } catch (_) {
+    return false;
+  }
+}
+
 const state = {
   libraries: [],
   selectedLibraryId: null,
@@ -5,6 +13,7 @@ const state = {
   episodes: [],
   detailKind: null, // "show" | "episode" | null
   detailId: null,
+  hideLockedShows: getStoredHideLockedShows(),
 };
 
 const UNSORTED_SEASON = "__unsorted__";
@@ -308,10 +317,11 @@ function renderLibrarySummary() {
           <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
           <div class="menu-dropdown" hidden>
             <button data-action="scan-library">Scan Library</button>
-            <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup Library" : "Backup Library"}</button>
+            <button data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup Library" : "Backup Library"}</button>
             <button data-action="restore-library"${lockedDisabledAttr(lib.locked)}>Restore Library</button>
             <button data-action="clean-library"${lockedDisabledAttr(lib.locked)}>${lib.cleaned_count > 0 ? "Re-clean Library" : "Clean Library"}</button>
             <button data-action="dryrun-library"${lockedDisabledAttr(lib.locked)}>Dry Run Library</button>
+            <button data-action="toggle-hide-locked">${state.hideLockedShows ? "Show Locked Shows" : "Hide Locked Shows"}</button>
           </div>
         </div>
       </div>
@@ -350,6 +360,14 @@ function renderLibrarySummary() {
   container.querySelector('[data-action="dryrun-library"]').addEventListener("click", () => {
     startJob(withDryRun(`/api/cleanup/libraries/${lib.id}/clean`), (job) => openDryRunResults(job));
   });
+  container.querySelector('[data-action="toggle-hide-locked"]').addEventListener("click", () => {
+    state.hideLockedShows = !state.hideLockedShows;
+    try {
+      localStorage.setItem("hideLockedShows", String(state.hideLockedShows));
+    } catch (_) {}
+    renderLibrarySummary();
+    renderShowsList();
+  });
   wireMenus(container);
 }
 
@@ -383,11 +401,13 @@ function afterShowMutation(showId) {
 
 function renderShowsList() {
   const list = document.getElementById("shows-list");
+  const visibleShows = state.hideLockedShows ? state.shows.filter((s) => !s.locked) : state.shows;
+  const hiddenCount = state.shows.length - visibleShows.length;
 
   // Show rows carry no action buttons or expandable season list of their
   // own - clicking a row opens the show overview (with its seasons and
   // episodes) in the detail panel, which has the full action set.
-  const showsHtml = state.shows
+  const showsHtml = visibleShows
     .map(
       (show) => `
       <div class="show-item${state.detailKind === "show" && state.detailId === show.id ? " selected" : ""}">
@@ -404,7 +424,18 @@ function renderShowsList() {
     )
     .join("");
 
-  list.innerHTML = showsHtml || '<p class="placeholder-text">No shows found in this library.</p>';
+  const hiddenNote =
+    hiddenCount > 0
+      ? `<p class="item-sub">${hiddenCount} locked show(s) hidden - toggle "Show Locked Shows" in the library menu to see them.</p>`
+      : "";
+  if (showsHtml) {
+    list.innerHTML = hiddenNote + showsHtml;
+  } else {
+    list.innerHTML =
+      hiddenCount > 0
+        ? '<p class="placeholder-text">Every show in this library is locked and hidden. Toggle "Show Locked Shows" in the library menu to see them.</p>'
+        : '<p class="placeholder-text">No shows found in this library.</p>';
+  }
 
   wirePosterImages(list);
   list.querySelectorAll('[data-show-id]').forEach((el) => {

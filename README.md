@@ -160,6 +160,9 @@ Additional UI notes:
   TinyMediaManager is picked up on the next reload. A library where every
   show is locked gets the same 🔒 next to its name, with its own
   Restore/Clean/Dry Run Library buttons (in its "☰" menu) disabled too.
+  A library's "☰" menu also has a **Hide Locked Shows**/**Show Locked
+  Shows** toggle to filter locked shows out of its show list; the choice
+  is remembered in the browser (`localStorage`), not per library.
 
 Matching between what's on disk, the scan database, and the backup database is
 done by `(library name, show name, filename)` only — files are not hashed or
