@@ -11,6 +11,7 @@
     <h1>Anime MKV Toolkit</h1>
     <nav class="tabs">
       <button type="button" class="tab-btn active" data-tab="library">Library</button>
+      <button type="button" class="tab-btn" data-tab="statistics">Statistics</button>
       <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     </nav>
     <select id="library-select" aria-label="Library" title="Switch library"></select>
@@ -27,6 +28,29 @@
     </section>
     <section class="panel" id="detail-panel">
       <p class="placeholder-text">Select a show or episode to see its details.</p>
+    </section>
+  </main>
+  <main id="view-statistics" style="display:none;">
+    <section class="panel">
+      <div class="section-header">
+        <h2 style="margin-top:0;">Overview</h2>
+        <select id="stats-library-select" aria-label="Statistics scope">
+          <option value="">All Libraries</option>
+        </select>
+      </div>
+      <div id="stats-overview-cards">Loading...</div>
+    </section>
+    <section class="panel">
+      <h2>Languages &amp; Codecs</h2>
+      <div id="stats-charts">Loading...</div>
+    </section>
+    <section class="panel">
+      <h2>Size &amp; Duration by Library</h2>
+      <div id="stats-by-library">Loading...</div>
+    </section>
+    <section class="panel">
+      <h2>Largest Episodes</h2>
+      <div id="stats-largest-episodes">Loading...</div>
     </section>
   </main>
   <main id="view-settings" style="display:none;">

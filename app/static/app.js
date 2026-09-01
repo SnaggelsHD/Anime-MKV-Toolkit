@@ -986,13 +986,14 @@ function openDryRunResults(job) {
 
 function initTabs() {
   const buttons = document.querySelectorAll(".tab-btn");
-  const viewIds = { library: "view-library", settings: "view-settings" };
+  const viewIds = { library: "view-library", statistics: "view-statistics", settings: "view-settings" };
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
       buttons.forEach((b) => b.classList.toggle("active", b === btn));
       for (const [tab, id] of Object.entries(viewIds)) {
         document.getElementById(id).style.display = btn.dataset.tab === tab ? "" : "none";
       }
+      if (btn.dataset.tab === "statistics") loadStatistics();
     });
   });
 }
@@ -1322,6 +1323,196 @@ async function loadSubtitleSettings() {
   } catch (err) {
     toast(`Failed to load subtitle naming settings: ${err.message}`, "error");
   }
+}
+
+// --- Statistics tab --------------------------------------------------------
+
+async function loadStatistics() {
+  const select = document.getElementById("stats-library-select");
+  const previousValue = select.value;
+  try {
+    const libraries = await api("/api/libraries");
+    select.innerHTML =
+      '<option value="">All Libraries</option>' +
+      libraries.map((lib) => `<option value="${lib.id}">${escapeHtml(lib.name)}</option>`).join("");
+    if (libraries.some((lib) => String(lib.id) === previousValue)) {
+      select.value = previousValue;
+    }
+  } catch (err) {
+    toast(`Failed to load libraries: ${err.message}`, "error");
+  }
+  if (!select.dataset.wired) {
+    select.addEventListener("change", () => loadStatisticsData(select.value));
+    select.dataset.wired = "true";
+  }
+  loadStatisticsData(select.value);
+}
+
+async function loadStatisticsData(libraryId) {
+  const cards = document.getElementById("stats-overview-cards");
+  const charts = document.getElementById("stats-charts");
+  const byLibrary = document.getElementById("stats-by-library");
+  const largest = document.getElementById("stats-largest-episodes");
+  cards.textContent = "Loading...";
+  charts.textContent = "Loading...";
+  byLibrary.textContent = "Loading...";
+  largest.textContent = "Loading...";
+
+  let stats;
+  try {
+    const query = libraryId ? `?library_id=${encodeURIComponent(libraryId)}` : "";
+    stats = await api(`/api/statistics${query}`);
+  } catch (err) {
+    const message = `<p class="placeholder-text">Failed to load statistics: ${escapeHtml(err.message)}</p>`;
+    cards.innerHTML = message;
+    charts.innerHTML = "";
+    byLibrary.innerHTML = "";
+    largest.innerHTML = "";
+    return;
+  }
+
+  renderStatsOverview(stats.overview);
+  renderStatsCharts(stats);
+  renderStatsByLibrary(stats.by_library);
+  renderStatsLargestEpisodes(stats.largest_episodes);
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(unitIndex === 0 || value >= 100 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return "0m";
+  const totalMinutes = Math.round(seconds / 60);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (minutes || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(" ");
+}
+
+function renderStatsOverview(overview) {
+  const container = document.getElementById("stats-overview-cards");
+  const cards = [
+    { label: "Libraries", value: overview.library_count },
+    { label: "Shows", value: overview.show_count },
+    { label: "Episodes", value: overview.episode_count },
+    { label: "Scanned", value: overview.scanned_count },
+    { label: "Backed Up", value: overview.backed_up_count },
+    { label: "Cleaned", value: overview.cleaned_count },
+    { label: "Missing", value: overview.missing_count },
+    { label: "Total Size", value: formatBytes(overview.total_size_bytes) },
+    { label: "Total Runtime", value: formatDuration(overview.total_duration_seconds) },
+    { label: "Avg Episode Length", value: formatDuration(overview.avg_duration_seconds) },
+  ];
+  container.innerHTML = `
+    <div class="stats-cards">
+      ${cards
+        .map(
+          (c) => `
+        <div class="stat-card">
+          <div class="stat-value">${escapeHtml(String(c.value))}</div>
+          <div class="stat-label">${escapeHtml(c.label)}</div>
+        </div>`
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderBarChart(title, entries) {
+  const max = entries.reduce((m, e) => Math.max(m, e.count), 0) || 1;
+  const rows = entries
+    .map(
+      (e) => `
+      <div class="stat-bar-row">
+        <div class="stat-bar-label" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}</div>
+        <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${((e.count / max) * 100).toFixed(1)}%"></div></div>
+        <div class="stat-bar-count">${e.count}</div>
+      </div>`
+    )
+    .join("");
+  return `
+    <div class="stat-chart">
+      <h3>${escapeHtml(title)}</h3>
+      ${rows || '<p class="item-sub">No data yet.</p>'}
+    </div>
+  `;
+}
+
+function renderStatsCharts(stats) {
+  const container = document.getElementById("stats-charts");
+  container.innerHTML = `
+    <div class="stats-charts-grid">
+      ${renderBarChart("Audio Languages", stats.audio_languages)}
+      ${renderBarChart("Subtitle Languages", stats.subtitle_languages)}
+      ${renderBarChart("Video Codecs", stats.video_codecs)}
+      ${renderBarChart("Audio Codecs", stats.audio_codecs)}
+      ${renderBarChart("Resolutions", stats.resolutions)}
+    </div>
+  `;
+}
+
+function renderStatsByLibrary(byLibrary) {
+  const container = document.getElementById("stats-by-library");
+  if (byLibrary.length === 0) {
+    container.innerHTML = '<p class="item-sub">No libraries found.</p>';
+    return;
+  }
+  const rows = byLibrary
+    .map(
+      (lib) => `
+      <tr>
+        <td>${escapeHtml(lib.library)}</td>
+        <td>${lib.episode_count}</td>
+        <td>${formatBytes(lib.size_bytes)}</td>
+        <td>${formatDuration(lib.duration_seconds)}</td>
+      </tr>`
+    )
+    .join("");
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Library</th><th>Episodes</th><th>Size</th><th>Runtime</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderStatsLargestEpisodes(episodes) {
+  const container = document.getElementById("stats-largest-episodes");
+  if (episodes.length === 0) {
+    container.innerHTML = '<p class="item-sub">No scanned episodes yet.</p>';
+    return;
+  }
+  const rows = episodes
+    .map(
+      (ep) => `
+      <tr>
+        <td>${escapeHtml(ep.filename)}</td>
+        <td>${escapeHtml(ep.show)}</td>
+        <td>${escapeHtml(ep.library)}</td>
+        <td>${formatBytes(ep.size_bytes)}</td>
+        <td>${formatDuration(ep.duration_seconds)}</td>
+      </tr>`
+    )
+    .join("");
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Episode</th><th>Show</th><th>Library</th><th>Size</th><th>Length</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 function escapeHtml(str) {
