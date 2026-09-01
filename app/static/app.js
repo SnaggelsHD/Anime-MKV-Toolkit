@@ -1087,9 +1087,106 @@ function initSettingsTab() {
     }
   });
 
+  document.getElementById("add-priority-lang").addEventListener("click", async () => {
+    const input = document.getElementById("new-priority-lang");
+    const lang = input.value.trim();
+    if (!lang) {
+      toast("Enter a language code", "error");
+      return;
+    }
+    try {
+      const current = await api("/api/cleanup/settings/audio-priority");
+      await api("/api/cleanup/settings/audio-priority", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: [...current.priority, lang] }),
+      });
+      input.value = "";
+      loadAudioPriority();
+    } catch (err) {
+      toast(`Failed to add language: ${err.message}`, "error");
+    }
+  });
+
   loadCodecMappings();
   loadSubtitleSettings();
   loadCleanupSteps();
+  loadAudioPriority();
+}
+
+async function loadAudioPriority() {
+  const container = document.getElementById("audio-priority-list");
+  container.textContent = "Loading...";
+  try {
+    const { priority } = await api("/api/cleanup/settings/audio-priority");
+    renderAudioPriority(priority);
+  } catch (err) {
+    container.innerHTML = `<p class="item-sub">Failed to load: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderAudioPriority(priority) {
+  const container = document.getElementById("audio-priority-list");
+  if (priority.length === 0) {
+    container.innerHTML =
+      '<p class="item-sub">No languages set - the first audio track in each file will always be used.</p>';
+    return;
+  }
+
+  const saveAndRender = async (nextPriority) => {
+    try {
+      await api("/api/cleanup/settings/audio-priority", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: nextPriority }),
+      });
+      renderAudioPriority(nextPriority);
+    } catch (err) {
+      toast(`Failed to save: ${err.message}`, "error");
+    }
+  };
+
+  container.innerHTML = `
+    <ol class="priority-list">
+      ${priority
+        .map(
+          (lang, i) => `
+        <li>
+          <span class="priority-rank">${i + 1}.</span>
+          <span class="priority-lang">${escapeHtml(lang)}</span>
+          <div class="item-actions">
+            <button type="button" data-action="priority-up" data-index="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button type="button" data-action="priority-down" data-index="${i}" ${i === priority.length - 1 ? "disabled" : ""}>↓</button>
+            <button type="button" class="danger" data-action="priority-remove" data-index="${i}">Remove</button>
+          </div>
+        </li>`
+        )
+        .join("")}
+    </ol>
+  `;
+
+  container.querySelectorAll('[data-action="priority-up"]').forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.index);
+      const next = [...priority];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      saveAndRender(next);
+    })
+  );
+  container.querySelectorAll('[data-action="priority-down"]').forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.index);
+      const next = [...priority];
+      [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      saveAndRender(next);
+    })
+  );
+  container.querySelectorAll('[data-action="priority-remove"]').forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.index);
+      saveAndRender(priority.filter((_, idx) => idx !== i));
+    })
+  );
 }
 
 const CLEANUP_STEPS = [
@@ -1099,6 +1196,7 @@ const CLEANUP_STEPS = [
   { key: "clear_muxing_app", label: "Clear the muxing-application tag" },
   { key: "force_first_track_japanese", label: "Force the first track to Japanese and clear its name" },
   { key: "set_video_default", label: "Set the default flag on video tracks" },
+  { key: "select_default_audio", label: "Pick one default audio track by language priority" },
   { key: "rename_audio_tracks", label: "Rename audio tracks (language, codec, channels)" },
   { key: "rename_subtitle_tracks", label: "Rename subtitle tracks (language, Forced/Commentary suffix)" },
 ];

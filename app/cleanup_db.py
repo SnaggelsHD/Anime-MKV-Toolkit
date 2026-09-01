@@ -24,6 +24,7 @@ STEP_TOGGLE_COLUMNS = [
     "clear_muxing_app",
     "force_first_track_japanese",
     "set_video_default",
+    "select_default_audio",
     "rename_audio_tracks",
     "rename_subtitle_tracks",
 ]
@@ -48,6 +49,10 @@ def _migrate_settings_columns():
         for column_name in STEP_TOGGLE_COLUMNS:
             if column_name not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE cleanup_settings ADD COLUMN {column_name} BOOLEAN NOT NULL DEFAULT 1")
+        if "audio_priority_json" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE cleanup_settings ADD COLUMN audio_priority_json TEXT NOT NULL DEFAULT '[\"ger\", \"jpn\", \"eng\"]'"
+            )
 
 
 def _seed_defaults():

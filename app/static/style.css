@@ -356,6 +356,18 @@ button.danger:hover { background: var(--danger); color: #fff; }
 }
 .cleanup-step-toggle:last-child { border-bottom: none; }
 .cleanup-step-toggle input { flex-shrink: 0; }
+
+.priority-list { list-style: none; margin: 0; padding: 0; }
+.priority-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+.priority-list li:last-child { border-bottom: none; }
+.priority-rank { color: var(--muted); font-size: 0.8rem; width: 1.5rem; flex-shrink: 0; }
+.priority-lang { flex: 1; font-weight: 600; }
 .settings-actions label {
   display: flex;
   flex-direction: column;

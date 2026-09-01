@@ -175,6 +175,10 @@ container metadata from anime MKV rips — the same rules a prior standalone
   name (matches the original script's behavior for typical Japanese-audio-
   first anime rips — this applies regardless of that track's actual type).
 - Sets every video track's default flag.
+- Picks exactly one audio track per file to be the default, chosen by
+  language priority (configurable, see below) rather than whatever the
+  source rip happened to ship with; every other audio track's default flag
+  is explicitly cleared.
 - Renames every audio track to `"<Language> [Commentary] <Codec> <Channels>"`
   (e.g. `"Japanese AAC 2.0"`, `"English Commentary Dolby Digital 5.1"`) and
   every subtitle track to `"<Language> [Commentary][ Forced]"`.
@@ -186,6 +190,13 @@ line in the Dry Run preview — for example, turning off "Force the first
 track to Japanese and clear its name" stops that quirky first-track rule
 without affecting audio/subtitle renaming, and turning off "Rename audio
 tracks" leaves audio track names untouched while everything else still runs.
+
+The default-audio language priority is configurable from **Settings →
+Cleanup Default Audio Track**: an ordered list of language codes (German,
+Japanese, English by default) that you can reorder, extend, or shrink. The
+first entry with a matching audio track in a given file wins; if nothing
+matches (or the list is empty), the first audio track in the file is used.
+Changes apply on the next cleanup run, same as every other setting here.
 
 The audio codec display names and the subtitle "Forced"/"Commentary" suffixes
 are configurable from **Settings → Cleanup**. Built-in codec entries (the ones

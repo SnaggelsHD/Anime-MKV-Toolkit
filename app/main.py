@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import threading
@@ -18,6 +19,7 @@ from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibra
 from app.config import BACKUP_DB_PATH, CLEANUP_DB_PATH, DB_PATH, LIBRARIES_ROOT
 from app.db import SessionLocal, get_db, init_db
 from app.jobs import add_result, create_job, fail_job, finish_job, get_job, list_jobs
+from app.mkv_cleanup import DEFAULT_AUDIO_PRIORITY
 from app.maintenance import (
     backup_all,
     clear_database,
@@ -833,6 +835,29 @@ def update_subtitle_settings(payload: dict, cleanup_db: Session = Depends(get_cl
     settings.commentary_suffix = commentary_suffix
     cleanup_db.commit()
     return {"forced_suffix": settings.forced_suffix, "commentary_suffix": settings.commentary_suffix}
+
+
+@app.get("/api/cleanup/settings/audio-priority")
+def get_audio_priority(cleanup_db: Session = Depends(get_cleanup_db)):
+    settings = cleanup_db.query(CleanupSettings).first()
+    if settings is None:
+        return {"priority": list(DEFAULT_AUDIO_PRIORITY)}
+    return {"priority": json.loads(settings.audio_priority_json)}
+
+
+@app.put("/api/cleanup/settings/audio-priority")
+def update_audio_priority(payload: dict, cleanup_db: Session = Depends(get_cleanup_db)):
+    priority = payload.get("priority")
+    if not isinstance(priority, list) or not all(isinstance(p, str) for p in priority):
+        raise HTTPException(status_code=400, detail="priority must be a list of language codes")
+    priority = [p.strip() for p in priority if p.strip()]
+    settings = cleanup_db.query(CleanupSettings).first()
+    if settings is None:
+        settings = CleanupSettings(id=1)
+        cleanup_db.add(settings)
+    settings.audio_priority_json = json.dumps(priority)
+    cleanup_db.commit()
+    return {"priority": priority}
 
 
 @app.get("/api/cleanup/settings/steps")

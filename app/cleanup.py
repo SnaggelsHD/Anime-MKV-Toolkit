@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.cleanup_db import STEP_TOGGLE_COLUMNS
 from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupResult, CleanupShow, CleanupSettings
-from app.mkv_cleanup import clean_file
+from app.mkv_cleanup import DEFAULT_AUDIO_PRIORITY, clean_file
 from app.models import Episode, Library, Show
 from app.scan import scan_episode
 from app.scanner import sync_episodes, sync_shows
@@ -14,13 +14,14 @@ from app.scanner import sync_episodes, sync_shows
 logger = logging.getLogger("mkv_backup")
 
 
-def _load_cleanup_config(cleanup_db: Session) -> tuple[dict[str, str], str, str, dict[str, bool]]:
+def _load_cleanup_config(cleanup_db: Session) -> tuple[dict[str, str], str, str, dict[str, bool], list[str]]:
     codec_map = {row.codec_key: row.display_name for row in cleanup_db.query(CleanupCodecMapping).all()}
     settings = cleanup_db.query(CleanupSettings).first()
     forced_suffix = settings.forced_suffix if settings else "Forced"
     commentary_suffix = settings.commentary_suffix if settings else "Commentary"
     steps = {name: getattr(settings, name) for name in STEP_TOGGLE_COLUMNS} if settings else {}
-    return codec_map, forced_suffix, commentary_suffix, steps
+    audio_priority = json.loads(settings.audio_priority_json) if settings else list(DEFAULT_AUDIO_PRIORITY)
+    return codec_map, forced_suffix, commentary_suffix, steps, audio_priority
 
 
 def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> CleanupEpisode:
@@ -65,8 +66,16 @@ def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> Cle
 
 
 def cleanup_episode(scan_db: Session, cleanup_db: Session, episode: Episode, dry_run: bool = False) -> dict:
-    codec_map, forced_suffix, commentary_suffix, steps = _load_cleanup_config(cleanup_db)
-    result = clean_file(episode.path, codec_map, forced_suffix, commentary_suffix, dry_run=dry_run, steps=steps)
+    codec_map, forced_suffix, commentary_suffix, steps, audio_priority = _load_cleanup_config(cleanup_db)
+    result = clean_file(
+        episode.path,
+        codec_map,
+        forced_suffix,
+        commentary_suffix,
+        dry_run=dry_run,
+        steps=steps,
+        audio_priority=audio_priority,
+    )
 
     if dry_run:
         # Never touches cleanup.db or triggers a rescan - nothing on disk changed.

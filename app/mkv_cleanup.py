@@ -121,6 +121,36 @@ def is_commentary(props: dict[str, Any]) -> bool:
     return value in (True, 1, "1", "true", "True")
 
 
+# Ordered list of language codes: the first one that matches an audio track's
+# language (compared by display name, so "ger"/"deu" both count as German)
+# is the one picked as the file's default audio track. If none match, the
+# first audio track in the file is used as a fallback ("else").
+DEFAULT_AUDIO_PRIORITY: list[str] = ["ger", "jpn", "eng"]
+
+
+def pick_default_audio_track(tracks: list[dict[str, Any]], priority: list[str]) -> tuple[int | None, str | None]:
+    """Return (overall_index, matched_language_name) for the audio track that
+    should be marked default, or (None, None) if the file has no audio
+    tracks. `overall_index` is 1-based over ALL tracks (matching mkvmerge's
+    track numbering), not just audio ones."""
+    audio_tracks = [
+        (i, t) for i, t in enumerate(tracks, start=1) if t.get("type") == "audio"
+    ]
+    if not audio_tracks:
+        return None, None
+
+    wanted_names = [lang_name(code) for code in priority]
+    for wanted in wanted_names:
+        for index, track in audio_tracks:
+            track_lang = lang_name(track.get("properties", {}).get("language") or "und")
+            if track_lang == wanted:
+                return index, wanted
+
+    fallback_index, fallback_track = audio_tracks[0]
+    fallback_lang = lang_name(fallback_track.get("properties", {}).get("language") or "und")
+    return fallback_index, fallback_lang
+
+
 DEFAULT_STEPS: dict[str, bool] = {
     "set_title": True,
     "clear_date": True,
@@ -128,6 +158,7 @@ DEFAULT_STEPS: dict[str, bool] = {
     "clear_muxing_app": True,
     "force_first_track_japanese": True,
     "set_video_default": True,
+    "select_default_audio": True,
     "rename_audio_tracks": True,
     "rename_subtitle_tracks": True,
 }
@@ -139,8 +170,10 @@ def inspect_file(
     forced_suffix: str = "Forced",
     commentary_suffix: str = "Commentary",
     steps: dict[str, bool] | None = None,
+    audio_priority: list[str] | None = None,
 ) -> FilePlan:
     steps = {**DEFAULT_STEPS, **(steps or {})}
+    audio_priority = audio_priority if audio_priority is not None else DEFAULT_AUDIO_PRIORITY
     data = get_mkvmerge_json(path)
     title = os.path.splitext(os.path.basename(path))[0]
     plan = FilePlan(path=path, title=title)
@@ -166,6 +199,11 @@ def inspect_file(
         plan.summaries.append("track:1 language -> jpn")
         plan.summaries.append("track:1 name -> <deleted>")
 
+    default_audio_index = None
+    default_audio_lang = None
+    if steps["select_default_audio"]:
+        default_audio_index, default_audio_lang = pick_default_audio_track(tracks, audio_priority)
+
     for overall_index, track in enumerate(tracks, start=1):
         track_type = track.get("type")
         props = track.get("properties", {})
@@ -175,6 +213,15 @@ def inspect_file(
             selector = f"track:{overall_index}"
             plan.edits.append(PlannedEdit(selector, "set", "flag-default=1"))
             plan.summaries.append(f"{selector} video -> flag-default=1")
+
+        if track_type == "audio" and default_audio_index is not None:
+            selector = f"track:{overall_index}"
+            if overall_index == default_audio_index:
+                plan.edits.append(PlannedEdit(selector, "set", "flag-default=1"))
+                plan.summaries.append(f"{selector} audio default -> flag-default=1 ({default_audio_lang})")
+            else:
+                plan.edits.append(PlannedEdit(selector, "set", "flag-default=0"))
+                plan.summaries.append(f"{selector} audio default -> flag-default=0")
 
         if track_type == "audio" and steps["rename_audio_tracks"]:
             selector = f"track:{overall_index}"
@@ -237,6 +284,7 @@ def clean_file(
     commentary_suffix: str = "Commentary",
     dry_run: bool = False,
     steps: dict[str, bool] | None = None,
+    audio_priority: list[str] | None = None,
 ) -> dict:
     """Inspect and clean up one MKV file's metadata in place. Returns a
     structured result: {ok, summary, warnings, error, edits_count}.
@@ -245,12 +293,13 @@ def clean_file(
     apply_plan() (which invokes mkvpropedit) is skipped, so the file on disk
     is never touched. `steps` turns individual cleanup steps on/off (see
     DEFAULT_STEPS); a step that's off contributes no edits and no summary
-    lines at all."""
+    lines at all. `audio_priority` controls which language wins the default
+    audio track when select_default_audio is on (see DEFAULT_AUDIO_PRIORITY)."""
     if not os.path.isfile(path):
         return {"ok": False, "error": "File not found on disk", "summary": [], "warnings": [], "edits_count": 0}
 
     try:
-        plan = inspect_file(path, codec_map, forced_suffix, commentary_suffix, steps=steps)
+        plan = inspect_file(path, codec_map, forced_suffix, commentary_suffix, steps=steps, audio_priority=audio_priority)
     except MkvCleanupError as exc:
         return {"ok": False, "error": str(exc), "summary": [], "warnings": [], "edits_count": 0}
 

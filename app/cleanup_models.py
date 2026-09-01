@@ -92,5 +92,8 @@ class CleanupSettings(CleanupBase):
     clear_muxing_app = Column(Boolean, nullable=False, default=True)
     force_first_track_japanese = Column(Boolean, nullable=False, default=True)
     set_video_default = Column(Boolean, nullable=False, default=True)
+    select_default_audio = Column(Boolean, nullable=False, default=True)
     rename_audio_tracks = Column(Boolean, nullable=False, default=True)
     rename_subtitle_tracks = Column(Boolean, nullable=False, default=True)
+    # JSON-encoded ordered list of language codes, e.g. '["ger", "jpn", "eng"]'.
+    audio_priority_json = Column(Text, nullable=False, default='["ger", "jpn", "eng"]')

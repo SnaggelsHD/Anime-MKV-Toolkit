@@ -55,6 +55,20 @@
     </section>
 
     <section class="panel">
+      <h2>Cleanup Default Audio Track</h2>
+      <p class="item-sub">
+        When "Pick one default audio track by language priority" is enabled, exactly one audio
+        track per file is marked default: the highest-priority language below that has a
+        matching audio track. If none match, the first audio track in the file is used instead.
+      </p>
+      <div id="audio-priority-list">Loading...</div>
+      <div class="settings-actions" style="margin-top:0.75rem;">
+        <input type="text" id="new-priority-lang" placeholder="Language code (e.g. fre)">
+        <button type="button" id="add-priority-lang">Add language</button>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>Cleanup Audio Codec Names</h2>
       <p class="item-sub">
         Display names used when the "Clean" action renames audio tracks. Built-in codec
