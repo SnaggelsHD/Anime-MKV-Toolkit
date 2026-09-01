@@ -421,6 +421,13 @@ input[type="text"] {
   vertical-align: middle;
 }
 
+.badge-locked {
+  display: inline-block;
+  font-size: 0.8rem;
+  vertical-align: middle;
+  cursor: help;
+}
+
 .button-link {
   display: inline-block;
   font: inherit;

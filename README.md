@@ -102,9 +102,9 @@ clicking one always opens that action set in the detail panel; season and
 library rows keep Scan/Backup visible with everything else (Clean, Dry Run,
 Clear) behind a "☰" menu, and every button is labeled with its scope (e.g.
 "Scan Show", "Rescan Season", "Backup Episode") so it's clear what it acts
-on. The episode detail view is the one exception to the "☰" menu pattern:
-all of its actions (Scan, Backup, Restore, Clean, Dry Run, Clear Backup) sit
-in one flat row.
+on. The show detail view (the panel a show row opens) and the episode
+detail view are the two exceptions to the "☰" menu pattern: all of their
+actions sit in one flat row instead.
 
 The workflow is **scan, then backup, then (optionally, later) restore**:
 
@@ -150,6 +150,14 @@ Additional UI notes:
   (`.jpg`/`.jpeg`/`.png`/`.webp` all work). Served straight off disk, nothing
   is stored in a database; a placeholder icon is shown wherever no matching
   file is found.
+- A show whose `tvshow.nfo` (as written by TinyMediaManager) contains
+  `<tmm_locked>true</tmm_locked>` shows a 🔒 next to its name and has its
+  **Restore**, **Clean**, and **Dry Run** buttons disabled everywhere they
+  appear (show, season, and episode level), so a locally-locked show's
+  metadata can't accidentally be touched. Scan, Backup, and Clear backup
+  stay available. The lock state is re-read from `tvshow.nfo` on disk every
+  time the show list loads, not just on an explicit scan, so toggling it in
+  TinyMediaManager is picked up on the next reload.
 
 Matching between what's on disk, the scan database, and the backup database is
 done by `(library name, show name, filename)` only — files are not hashed or
@@ -183,6 +191,12 @@ container metadata from anime MKV rips — the same rules a prior standalone
   (e.g. `"Japanese AAC 2.0"`, `"English Commentary Dolby Digital 5.1"`) and
   every subtitle track to `"<Language> [Commentary][ Forced]"`.
 - Flags unrecognized audio codecs as warnings without failing the cleanup.
+
+Cleanup (and restore) is refused for any show locked via `tvshow.nfo` (see
+"Using the UI" above), and this is enforced at the API level, not just in
+the button state, so a library- or all-libraries-wide clean/restore
+silently skips a locked show's episodes (reported as a failed result with
+an explanatory error) instead of failing the whole run.
 
 Each of the steps above can be turned on or off independently from
 **Settings → Cleanup — Steps**. A disabled step contributes no edit and no

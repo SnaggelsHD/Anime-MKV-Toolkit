@@ -39,6 +39,7 @@ class Show(Base):
     name = Column(String, nullable=False)
     path = Column(String, nullable=False)
     missing = Column(Boolean, nullable=False, default=False)
+    locked = Column(Boolean, nullable=False, default=False)
 
     library = relationship("Library", back_populates="shows")
     episodes = relationship("Episode", back_populates="show", cascade="all, delete-orphan")

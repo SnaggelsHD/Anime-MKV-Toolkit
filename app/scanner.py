@@ -1,5 +1,6 @@
 import os
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -101,18 +102,37 @@ def sync_libraries(db: Session, libraries_root: str) -> list[Library]:
     return db.query(Library).order_by(Library.name).all()
 
 
+def _read_tvshow_locked(show_path: str) -> bool:
+    """TinyMediaManager writes a tvshow.nfo in the show's root folder; a
+    <tmm_locked>true</tmm_locked> child means the show's metadata is locked
+    there, which we mirror by locking cleanup/restore for it here too."""
+    nfo_path = os.path.join(show_path, "tvshow.nfo")
+    if not os.path.isfile(nfo_path):
+        return False
+    try:
+        root = ET.parse(nfo_path).getroot()
+    except ET.ParseError:
+        return False
+    locked_el = root.find("tmm_locked")
+    if locked_el is None or locked_el.text is None:
+        return False
+    return locked_el.text.strip().lower() == "true"
+
+
 def sync_shows(db: Session, library: Library) -> list[Show]:
     existing = {show.name: show for show in db.query(Show).filter(Show.library_id == library.id).all()}
     found_names = set()
     for name, path in find_shows(library.path):
         found_names.add(name)
+        locked = _read_tvshow_locked(path)
         show = existing.get(name)
         if show is None:
-            show = Show(library_id=library.id, name=name, path=path, missing=False)
+            show = Show(library_id=library.id, name=name, path=path, missing=False, locked=locked)
             db.add(show)
         else:
             show.path = path
             show.missing = False
+            show.locked = locked
     for name, show in existing.items():
         if name not in found_names:
             show.missing = True

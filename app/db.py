@@ -29,7 +29,7 @@ def _migrate_schema():
     ALTER TABLE ADD COLUMN directly; this is idempotent (checks first)."""
     migrations = {
         "libraries": [("missing", "BOOLEAN NOT NULL DEFAULT 0")],
-        "shows": [("missing", "BOOLEAN NOT NULL DEFAULT 0")],
+        "shows": [("missing", "BOOLEAN NOT NULL DEFAULT 0"), ("locked", "BOOLEAN NOT NULL DEFAULT 0")],
         "episodes": [("missing", "BOOLEAN NOT NULL DEFAULT 0"), ("last_scanned_at", "DATETIME")],
     }
     with engine.connect() as conn:

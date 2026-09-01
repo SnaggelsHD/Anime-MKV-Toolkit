@@ -17,6 +17,16 @@ function withDryRun(url) {
   return url + (url.includes("?") ? "&" : "?") + "dry_run=true";
 }
 
+const LOCKED_TITLE = "Locked via tvshow.nfo (tmm_locked) - cleanup and restore disabled";
+
+function lockedBadge(locked) {
+  return locked ? `<span class="badge-locked" title="${escapeHtml(LOCKED_TITLE)}">🔒</span>` : "";
+}
+
+function lockedDisabledAttr(locked) {
+  return locked ? ` disabled title="${escapeHtml(LOCKED_TITLE)}"` : "";
+}
+
 const POSTER_PLACEHOLDER =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -378,7 +388,7 @@ function renderShowsList() {
           <div class="item-name-wrap">
             <img class="poster-thumb" data-poster-src="/api/shows/${show.id}/poster" alt="">
             <div>
-              <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+              <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""} ${lockedBadge(show.locked)}</div>
               <div class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</div>
             </div>
           </div>
@@ -399,7 +409,7 @@ function renderShowsList() {
   });
 }
 
-function renderEpisodes(showId, container) {
+function renderEpisodes(showId, container, showLocked = false) {
   if (state.episodes.length === 0) {
     container.innerHTML = '<p class="placeholder-text">No episodes found.</p>';
     return;
@@ -434,8 +444,8 @@ function renderEpisodes(showId, container) {
           <div class="menu-wrap">
             <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
             <div class="menu-dropdown" hidden>
-              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean Season" : "Clean Season"}</button>
-              <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run Season</button>
+              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}"${lockedDisabledAttr(showLocked)}>${cleanedCount > 0 ? "Re-clean Season" : "Clean Season"}</button>
+              <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}"${lockedDisabledAttr(showLocked)}>Dry Run Season</button>
               <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear Season</button>
             </div>
           </div>
@@ -726,7 +736,7 @@ async function renderShowOverview(showId) {
       <div class="detail-title-wrap">
         <img class="poster-thumb poster-thumb-lg" data-poster-src="/api/shows/${show.id}/poster" alt="">
         <div>
-          <h2>${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h2>
+          <h2>${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""} ${lockedBadge(show.locked)}</h2>
           <p class="item-sub">${escapeHtml(show.path)}</p>
           <p class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</p>
         </div>
@@ -736,22 +746,16 @@ async function renderShowOverview(showId) {
     <div class="item-actions" style="margin: 0.75rem 0;">
       <button data-action="scan-show">${show.scanned_count > 0 ? "Rescan Show" : "Scan Show"}</button>
       <button class="primary" data-action="backup-show">${show.backed_up_count > 0 ? "Re-backup Show" : "Backup Show"}</button>
-      <div class="menu-wrap">
-        <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
-        <div class="menu-dropdown" hidden>
-          <button data-action="restore-show">Restore Show</button>
-          <button data-action="clean-show">${show.cleaned_count > 0 ? "Re-clean Show" : "Clean Show"}</button>
-          <button data-action="dryrun-show">Dry Run Show</button>
-          <button class="danger" data-action="clear-show">Clear Show</button>
-        </div>
-      </div>
+      <button data-action="restore-show"${lockedDisabledAttr(show.locked)}>Restore Show</button>
+      <button data-action="clean-show"${lockedDisabledAttr(show.locked)}>${show.cleaned_count > 0 ? "Re-clean Show" : "Clean Show"}</button>
+      <button data-action="dryrun-show"${lockedDisabledAttr(show.locked)}>Dry Run Show</button>
+      <button class="danger" data-action="clear-show">Clear Show</button>
     </div>
     <h2 style="margin-top:1rem;">Seasons</h2>
     <div id="show-episodes-list"><p class="placeholder-text">Loading episodes...</p></div>
   `;
 
   wirePosterImages(panel);
-  wireMenus(panel);
   panel.querySelector('[data-action="close-detail"]').addEventListener("click", () => {
     document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
     resetDetailPanel();
@@ -812,7 +816,7 @@ async function renderShowOverview(showId) {
     episodesContainer.innerHTML = `<p class="placeholder-text">Failed to load episodes: ${escapeHtml(err.message)}</p>`;
     return;
   }
-  renderEpisodes(showId, episodesContainer);
+  renderEpisodes(showId, episodesContainer, show.locked);
 }
 
 async function renderEpisodeDetail(episodeId) {
@@ -849,7 +853,7 @@ async function renderEpisodeDetail(episodeId) {
   panel.innerHTML = `
     <button type="button" class="back-link" data-action="back-to-show">${showName ? `‹ Back to ${escapeHtml(showName)}` : "‹ Back"}</button>
     <div class="detail-panel-header">
-      <h2 style="word-break:break-all;">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</h2>
+      <h2 style="word-break:break-all;">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""} ${lockedBadge(ep.locked)}</h2>
       <button data-action="close-detail" aria-label="Close" title="Close">×</button>
     </div>
     <p class="item-sub">${escapeHtml(ep.path)}</p>
@@ -858,9 +862,9 @@ async function renderEpisodeDetail(episodeId) {
     <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
       <button data-action="scan-episode">${hasScan ? "Rescan Episode" : "Scan Episode"}</button>
       <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup Episode" : "Backup Episode"}</button>
-      <button data-action="restore-episode">Restore Episode</button>
-      <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean Episode" : "Clean Episode"}</button>
-      <button data-action="dryrun-episode">Dry Run Episode</button>
+      <button data-action="restore-episode"${lockedDisabledAttr(ep.locked)}>Restore Episode</button>
+      <button data-action="clean-episode"${lockedDisabledAttr(ep.locked)}>${ep.has_cleanup ? "Re-clean Episode" : "Clean Episode"}</button>
+      <button data-action="dryrun-episode"${lockedDisabledAttr(ep.locked)}>Dry Run Episode</button>
       <button class="danger" data-action="clear-episode-backup">Clear Episode Backup</button>
     </div>
     <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">

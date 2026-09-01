@@ -35,6 +35,9 @@ def _find_backup_chapter_xml(backup_db: Session, episode: Episode) -> str | None
 def restore_chapters_for_episode(scan_db: Session, backup_db: Session, episode: Episode) -> dict:
     result = {"episode_id": episode.id, "filename": episode.filename}
 
+    if episode.show.locked:
+        return {**result, "ok": False, "error": "Show is locked (tvshow.nfo tmm_locked=true) - restore disabled"}
+
     chapter_xml = _find_backup_chapter_xml(backup_db, episode)
     if chapter_xml is None:
         return {**result, "ok": False, "error": "No stored chapters for this episode"}

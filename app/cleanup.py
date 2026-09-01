@@ -66,6 +66,13 @@ def _get_or_create_cleanup_episode(cleanup_db: Session, episode: Episode) -> Cle
 
 
 def cleanup_episode(scan_db: Session, cleanup_db: Session, episode: Episode, dry_run: bool = False) -> dict:
+    if episode.show.locked:
+        error = "Show is locked (tvshow.nfo tmm_locked=true) - cleanup disabled"
+        result_dict = {"episode_id": episode.id, "filename": episode.filename, "ok": False, "error": error}
+        if dry_run:
+            result_dict.update({"summary": [], "warnings": [], "dry_run": True})
+        return result_dict
+
     codec_map, forced_suffix, commentary_suffix, steps, audio_priority = _load_cleanup_config(cleanup_db)
     result = clean_file(
         episode.path,
