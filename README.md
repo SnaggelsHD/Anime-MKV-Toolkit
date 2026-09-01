@@ -232,15 +232,18 @@ scopes everything below to one library or all of them:
 
 - **Overview**: library/show/episode counts, how many are scanned/backed
   up/cleaned/missing, total size on disk, total runtime, and average
-  episode length.
+  episode length/size.
 - **Languages & Codecs**: bar charts of audio languages, subtitle languages,
   video codecs, audio codecs, and resolution (bucketed as 480p/720p/1080p/
   1440p/2160p), counted per *track*: a two-audio-track episode counts
   toward two languages.
 - **Size & Duration by Library**: a table breaking total size and runtime
   down per library.
-- **Largest Episodes**: the 10 biggest files by size, with their show and
-  library.
+- **File Sizes**: a size-distribution histogram (bucketed from `< 500 MB`
+  up to `8 GB+`) plus four ranking tables: largest shows, largest seasons,
+  largest episodes, and smallest episodes (the last two capped at 10 and 5
+  entries), each with its show/library for context, useful for spotting
+  what's actually eating disk space or an oddly small/corrupt file.
 
 Everything is rendered with plain HTML/CSS (no charting library, no CDN
 dependency) so it keeps working fully offline. Language names are matched

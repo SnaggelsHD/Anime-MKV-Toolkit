@@ -687,3 +687,12 @@ pre {
   min-width: 1.5rem;
   text-align: right;
 }
+
+.stats-subheading {
+  margin: 1.25rem 0 0.5rem 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

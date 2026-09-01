@@ -1352,11 +1352,11 @@ async function loadStatisticsData(libraryId) {
   const cards = document.getElementById("stats-overview-cards");
   const charts = document.getElementById("stats-charts");
   const byLibrary = document.getElementById("stats-by-library");
-  const largest = document.getElementById("stats-largest-episodes");
+  const fileSizes = document.getElementById("stats-file-sizes");
   cards.textContent = "Loading...";
   charts.textContent = "Loading...";
   byLibrary.textContent = "Loading...";
-  largest.textContent = "Loading...";
+  fileSizes.textContent = "Loading...";
 
   let stats;
   try {
@@ -1367,14 +1367,14 @@ async function loadStatisticsData(libraryId) {
     cards.innerHTML = message;
     charts.innerHTML = "";
     byLibrary.innerHTML = "";
-    largest.innerHTML = "";
+    fileSizes.innerHTML = "";
     return;
   }
 
   renderStatsOverview(stats.overview);
   renderStatsCharts(stats);
   renderStatsByLibrary(stats.by_library);
-  renderStatsLargestEpisodes(stats.largest_episodes);
+  renderStatsFileSizes(stats);
 }
 
 function formatBytes(bytes) {
@@ -1415,6 +1415,7 @@ function renderStatsOverview(overview) {
     { label: "Total Size", value: formatBytes(overview.total_size_bytes) },
     { label: "Total Runtime", value: formatDuration(overview.total_duration_seconds) },
     { label: "Avg Episode Length", value: formatDuration(overview.avg_duration_seconds) },
+    { label: "Avg Episode Size", value: formatBytes(overview.avg_size_bytes) },
   ];
   container.innerHTML = `
     <div class="stats-cards">
@@ -1489,12 +1490,67 @@ function renderStatsByLibrary(byLibrary) {
   `;
 }
 
-function renderStatsLargestEpisodes(episodes) {
-  const container = document.getElementById("stats-largest-episodes");
-  if (episodes.length === 0) {
-    container.innerHTML = '<p class="item-sub">No scanned episodes yet.</p>';
-    return;
-  }
+function renderStatsFileSizes(stats) {
+  const container = document.getElementById("stats-file-sizes");
+  container.innerHTML = `
+    ${renderBarChart("Size Distribution", stats.size_distribution)}
+    <h3 class="stats-subheading">Largest Shows</h3>
+    ${renderShowSizeTable(stats.largest_shows)}
+    <h3 class="stats-subheading">Largest Seasons</h3>
+    ${renderSeasonSizeTable(stats.largest_seasons)}
+    <h3 class="stats-subheading">Largest Episodes</h3>
+    ${renderEpisodeSizeTable(stats.largest_episodes)}
+    <h3 class="stats-subheading">Smallest Episodes</h3>
+    ${renderEpisodeSizeTable(stats.smallest_episodes)}
+  `;
+}
+
+function renderShowSizeTable(shows) {
+  if (shows.length === 0) return '<p class="item-sub">No scanned shows yet.</p>';
+  const rows = shows
+    .map(
+      (s) => `
+      <tr>
+        <td>${escapeHtml(s.show)}</td>
+        <td>${escapeHtml(s.library)}</td>
+        <td>${s.episode_count}</td>
+        <td>${formatBytes(s.size_bytes)}</td>
+        <td>${formatDuration(s.duration_seconds)}</td>
+      </tr>`
+    )
+    .join("");
+  return `
+    <table>
+      <thead><tr><th>Show</th><th>Library</th><th>Episodes</th><th>Size</th><th>Runtime</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderSeasonSizeTable(seasons) {
+  if (seasons.length === 0) return '<p class="item-sub">No scanned seasons yet.</p>';
+  const rows = seasons
+    .map(
+      (s) => `
+      <tr>
+        <td>${s.season === "Unsorted" ? "Unsorted" : `Season ${escapeHtml(s.season)}`}</td>
+        <td>${escapeHtml(s.show)}</td>
+        <td>${escapeHtml(s.library)}</td>
+        <td>${s.episode_count}</td>
+        <td>${formatBytes(s.size_bytes)}</td>
+      </tr>`
+    )
+    .join("");
+  return `
+    <table>
+      <thead><tr><th>Season</th><th>Show</th><th>Library</th><th>Episodes</th><th>Size</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderEpisodeSizeTable(episodes) {
+  if (episodes.length === 0) return '<p class="item-sub">No scanned episodes yet.</p>';
   const rows = episodes
     .map(
       (ep) => `
@@ -1507,7 +1563,7 @@ function renderStatsLargestEpisodes(episodes) {
       </tr>`
     )
     .join("");
-  container.innerHTML = `
+  return `
     <table>
       <thead><tr><th>Episode</th><th>Show</th><th>Library</th><th>Size</th><th>Length</th></tr></thead>
       <tbody>${rows}</tbody>

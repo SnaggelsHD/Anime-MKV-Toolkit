@@ -66,6 +66,27 @@ def _resolution_bucket(width: Any, height: Any) -> str:
     return f"{h}p"
 
 
+GIB = 1024**3
+# (inclusive lower bound in bytes, exclusive upper bound, label) - kept as an
+# ordered list (not a Counter) so the distribution renders as a real
+# ascending-size histogram rather than sorted by count.
+SIZE_BUCKETS = [
+    (0, 0.5 * GIB, "< 500 MB"),
+    (0.5 * GIB, 1 * GIB, "500 MB - 1 GB"),
+    (1 * GIB, 2 * GIB, "1 - 2 GB"),
+    (2 * GIB, 4 * GIB, "2 - 4 GB"),
+    (4 * GIB, 8 * GIB, "4 - 8 GB"),
+    (8 * GIB, float("inf"), "8 GB+"),
+]
+
+
+def _size_bucket_label(size_bytes: int) -> str:
+    for lower, upper, label in SIZE_BUCKETS:
+        if lower <= size_bytes < upper:
+            return label
+    return SIZE_BUCKETS[-1][2]
+
+
 def _to_float(value: Any) -> float:
     try:
         return float(value)
@@ -116,8 +137,11 @@ def compute_statistics(scan_db: Session, library_id: int | None = None) -> dict:
     per_library_size: Counter = Counter()
     per_library_duration: Counter = Counter()
     per_library_episodes: Counter = Counter()
+    size_distribution: Counter = Counter()
 
-    largest_episodes: list[dict] = []
+    all_episode_sizes: list[dict] = []
+    show_totals: dict[int, dict] = {}
+    season_totals: dict[tuple[int, str], dict] = {}
 
     for ep in episodes:
         tm = track_by_episode.get(ep.id)
@@ -155,12 +179,13 @@ def compute_statistics(scan_db: Session, library_id: int | None = None) -> dict:
         parsed_episode_count += 1
         total_size_bytes += size_bytes
         total_duration_seconds += duration_seconds
+        size_distribution[_size_bucket_label(size_bytes)] += 1
 
         if library:
             per_library_size[library.name] += size_bytes
             per_library_duration[library.name] += duration_seconds
             per_library_episodes[library.name] += 1
-            largest_episodes.append(
+            all_episode_sizes.append(
                 {
                     "filename": ep.filename,
                     "show": show.name,
@@ -170,7 +195,41 @@ def compute_statistics(scan_db: Session, library_id: int | None = None) -> dict:
                 }
             )
 
-    largest_episodes.sort(key=lambda e: e["size_bytes"], reverse=True)
+            show_entry = show_totals.setdefault(
+                show.id,
+                {"show": show.name, "library": library.name, "episode_count": 0, "size_bytes": 0, "duration_seconds": 0},
+            )
+            show_entry["episode_count"] += 1
+            show_entry["size_bytes"] += size_bytes
+            show_entry["duration_seconds"] += duration_seconds
+
+            season_label = ep.season or "Unsorted"
+            season_key = (show.id, season_label)
+            season_entry = season_totals.setdefault(
+                season_key,
+                {
+                    "season": season_label,
+                    "show": show.name,
+                    "library": library.name,
+                    "episode_count": 0,
+                    "size_bytes": 0,
+                    "duration_seconds": 0,
+                },
+            )
+            season_entry["episode_count"] += 1
+            season_entry["size_bytes"] += size_bytes
+            season_entry["duration_seconds"] += duration_seconds
+
+    episodes_by_size_asc = sorted(all_episode_sizes, key=lambda e: e["size_bytes"])
+    smallest_episodes = episodes_by_size_asc[:5]
+    largest_episodes = list(reversed(episodes_by_size_asc[-10:]))
+
+    largest_shows = sorted(show_totals.values(), key=lambda s: s["size_bytes"], reverse=True)[:10]
+    largest_seasons = sorted(season_totals.values(), key=lambda s: s["size_bytes"], reverse=True)[:10]
+
+    size_distribution_list = [
+        {"name": label, "count": size_distribution.get(label, 0)} for _, _, label in SIZE_BUCKETS
+    ]
 
     by_library = [
         {
@@ -193,12 +252,17 @@ def compute_statistics(scan_db: Session, library_id: int | None = None) -> dict:
             "total_size_bytes": total_size_bytes,
             "total_duration_seconds": total_duration_seconds,
             "avg_duration_seconds": (total_duration_seconds / parsed_episode_count) if parsed_episode_count else 0,
+            "avg_size_bytes": (total_size_bytes / parsed_episode_count) if parsed_episode_count else 0,
         },
         "audio_languages": _counter_list(audio_languages),
         "subtitle_languages": _counter_list(subtitle_languages),
         "video_codecs": _counter_list(video_codecs),
         "audio_codecs": _counter_list(audio_codecs),
         "resolutions": _counter_list(resolutions),
+        "size_distribution": size_distribution_list,
         "by_library": by_library,
-        "largest_episodes": largest_episodes[:10],
+        "largest_shows": largest_shows,
+        "largest_seasons": largest_seasons,
+        "largest_episodes": largest_episodes,
+        "smallest_episodes": smallest_episodes,
     }
