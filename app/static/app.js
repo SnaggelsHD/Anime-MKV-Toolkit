@@ -298,7 +298,7 @@ function renderLibrarySummary() {
     <div class="library-summary-row">
       <div class="item-name-wrap">
         <div>
-          <div class="item-name">${escapeHtml(lib.name)}${lib.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+          <div class="item-name">${escapeHtml(lib.name)}${lib.missing ? ' <span class="badge-missing">MISSING</span>' : ""} ${lockedBadge(lib.locked)}</div>
           <div class="item-sub">${escapeHtml(lib.path)}</div>
           <div class="item-sub">${lib.show_count} show(s) • ${lib.cleaned_count} cleaned</div>
         </div>
@@ -309,8 +309,9 @@ function renderLibrarySummary() {
           <div class="menu-dropdown" hidden>
             <button data-action="scan-library">Scan Library</button>
             <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup Library" : "Backup Library"}</button>
-            <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean Library" : "Clean Library"}</button>
-            <button data-action="dryrun-library">Dry Run Library</button>
+            <button data-action="restore-library"${lockedDisabledAttr(lib.locked)}>Restore Library</button>
+            <button data-action="clean-library"${lockedDisabledAttr(lib.locked)}>${lib.cleaned_count > 0 ? "Re-clean Library" : "Clean Library"}</button>
+            <button data-action="dryrun-library"${lockedDisabledAttr(lib.locked)}>Dry Run Library</button>
           </div>
         </div>
       </div>
@@ -330,6 +331,12 @@ function renderLibrarySummary() {
       return;
     }
     startJob(`/api/libraries/${lib.id}/backup`, () => selectLibrary(lib.id));
+  });
+  container.querySelector('[data-action="restore-library"]').addEventListener("click", () => {
+    if (!confirm(`Restore chapters for every episode in "${lib.name}"? This overwrites the MKV files on disk with the stored chapters.`)) {
+      return;
+    }
+    startJob(`/api/libraries/${lib.id}/restore`, () => selectLibrary(lib.id));
   });
   container.querySelector('[data-action="clean-library"]').addEventListener("click", () => {
     if (

@@ -157,7 +157,9 @@ Additional UI notes:
   metadata can't accidentally be touched. Scan, Backup, and Clear backup
   stay available. The lock state is re-read from `tvshow.nfo` on disk every
   time the show list loads, not just on an explicit scan, so toggling it in
-  TinyMediaManager is picked up on the next reload.
+  TinyMediaManager is picked up on the next reload. A library where every
+  show is locked gets the same 🔒 next to its name, with its own
+  Restore/Clean/Dry Run Library buttons (in its "☰" menu) disabled too.
 
 Matching between what's on disk, the scan database, and the backup database is
 done by `(library name, show name, filename)` only — files are not hashed or

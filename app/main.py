@@ -251,6 +251,7 @@ def list_libraries(
                 "name": lib.name,
                 "path": lib.path,
                 "missing": lib.missing,
+                "locked": len(shows) > 0 and all(show.locked for show in shows),
                 "show_count": len(shows),
                 "backed_up_count": backed_up_count,
                 "cleaned_count": _library_cleaned_count(cleanup_db, lib.name),
