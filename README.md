@@ -238,6 +238,31 @@ Episode rows show a third **cleaned** indicator alongside **scanned** and
 **backed up**, and the episode detail view shows the
 last-cleaned timestamp plus any error inline.
 
+## Track flags (default/forced editor)
+
+The episode detail view's scanned Track Metadata table doubles as a manual
+editor for each track's **Default** and **Forced** flags, for a quick fix
+that doesn't need a full cleanup run. When the show isn't locked (see
+"Using the UI" above), those two columns are checkboxes instead of plain
+yes/no text; toggle any of them and:
+
+- **Save** writes just those flags to the file on disk via `mkvpropedit`
+  (nothing else - no titles, tags, or track names touched) and re-scans the
+  episode immediately, the same way Clean does, so the table reflects the
+  new state right away.
+- **Cancel** resets the checkboxes back to what the table loaded with. This
+  is purely client-side - no request is sent.
+- **Save for Season** writes the same flag values to every other episode in
+  the current season whose tracks are "the same" as this one (same number
+  of tracks, same type and language in the same order - the flag values
+  themselves aren't part of that comparison, since applying them is the
+  whole point). An episode with a different track layout is skipped rather
+  than guessed at, and shows up as a failed result (with an explanatory
+  reason) in the task queue alongside the episodes it did update.
+
+Like Clean/Restore, editing track flags is refused for a locked show, both
+in the button/checkbox state and at the API level.
+
 ## Statistics
 
 The Statistics tab aggregates everything already sitting in the scan

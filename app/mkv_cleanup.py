@@ -277,6 +277,34 @@ def apply_plan(plan: FilePlan) -> tuple[str, str, int]:
     return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
 
 
+def set_track_flags(path: str, flags: list[dict[str, Any]]) -> dict:
+    """Directly set flag-default/flag-forced on specific tracks via
+    mkvpropedit, independent of the rest of the cleanup pipeline (no title/
+    tag/rename edits, no dry-run mode). `flags` is a list of
+    {"id": <1-based overall track number>, "default": bool, "forced": bool},
+    matching mediainfo's per-track "ID" field, which lines up with
+    mkvpropedit's track:N selector. Used by the episode/season track flag
+    editor in the UI."""
+    if not os.path.isfile(path):
+        return {"ok": False, "error": "File not found on disk"}
+    if not flags:
+        return {"ok": True, "error": None}
+
+    plan = FilePlan(path=path, title=os.path.splitext(os.path.basename(path))[0])
+    for f in flags:
+        selector = f"track:{f['id']}"
+        plan.edits.append(PlannedEdit(selector, "set", f"flag-default={1 if f['default'] else 0}"))
+        plan.edits.append(PlannedEdit(selector, "set", f"flag-forced={1 if f['forced'] else 0}"))
+
+    try:
+        stdout, stderr, code = apply_plan(plan)
+    except MkvCleanupError as exc:
+        return {"ok": False, "error": str(exc)}
+    if code != 0:
+        return {"ok": False, "error": stderr or stdout or f"mkvpropedit exited with code {code}"}
+    return {"ok": True, "error": None}
+
+
 def clean_file(
     path: str,
     codec_map: dict[str, str],

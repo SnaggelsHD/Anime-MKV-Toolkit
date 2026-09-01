@@ -233,10 +233,10 @@ function trackJob(jobId, onDone) {
   poll();
 }
 
-async function startJob(path, onDone) {
+async function startJob(path, onDone, options = { method: "POST" }) {
   let jobId;
   try {
-    const res = await api(path, { method: "POST" });
+    const res = await api(path, options);
     jobId = res.job_id;
   } catch (err) {
     toast(`Failed to start operation: ${err.message}`, "error");
@@ -665,12 +665,14 @@ function buildChaptersSection(groupId, chapterXml) {
   );
 }
 
-function buildTrackSection(groupId, tracksJson) {
+function buildTrackSection(groupId, tracksJson, options = {}) {
+  const { editable = false, locked = false } = options;
   if (!tracksJson) {
     return '<h2 style="margin-top:1rem;">Track Metadata</h2><p class="item-sub">No track metadata stored.</p>';
   }
   const parsedTracks = parseMediaInfoTracks(tracksJson);
   let tableRows;
+  let editableTrackCount = 0;
   if (parsedTracks.status === "invalid") {
     tableRows = `<tr><td colspan="7" class="item-sub">Could not parse the stored track metadata as JSON.</td></tr>`;
   } else if (parsedTracks.status === "legacy") {
@@ -679,19 +681,37 @@ function buildTrackSection(groupId, tracksJson) {
     tableRows = `<tr><td colspan="7" class="item-sub">No video/audio/subtitle tracks found in the stored report.</td></tr>`;
   } else {
     tableRows = parsedTracks.tracks
-      .map(
-        (t) => `<tr>
+      .map((t) => {
+        const canEdit = editable && String(t.id).trim() !== "";
+        if (canEdit) editableTrackCount += 1;
+        const flagCell = (field, checked) =>
+          canEdit
+            ? `<input type="checkbox" data-track-flag="${field}" data-track-id="${escapeHtml(String(t.id))}" ${checked ? "checked" : ""}${locked ? " disabled" : ""}>`
+            : checked
+              ? "yes"
+              : "no";
+        return `<tr>
               <td>${escapeHtml(String(t.id))}</td>
               <td>${escapeHtml(t.type)}</td>
               <td>${escapeHtml(t.language)}</td>
               <td>${escapeHtml(t.name)}</td>
-              <td>${t.default ? "yes" : "no"}</td>
-              <td>${t.forced ? "yes" : "no"}</td>
+              <td>${flagCell("default", t.default)}</td>
+              <td>${flagCell("forced", t.forced)}</td>
               <td>${escapeHtml(t.format)}</td>
-            </tr>`
-      )
+            </tr>`;
+      })
       .join("");
   }
+
+  const editorControls =
+    editable && editableTrackCount > 0
+      ? `
+      <div class="item-actions" style="margin-top:0.5rem;">
+        <button type="button" class="primary" data-action="save-track-flags"${lockedDisabledAttr(locked)}>Save</button>
+        <button type="button" data-action="cancel-track-flags"${lockedDisabledAttr(locked)}>Cancel</button>
+        <button type="button" data-action="save-track-flags-season"${lockedDisabledAttr(locked)}>Save for Season</button>
+      </div>`
+      : "";
 
   return buildToggleSection(
     groupId,
@@ -700,7 +720,7 @@ function buildTrackSection(groupId, tracksJson) {
       {
         key: "table",
         label: "Table",
-        html: `<table><thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Name</th><th>Default</th><th>Forced</th><th>Format</th></tr></thead><tbody>${tableRows}</tbody></table>`,
+        html: `<table id="${groupId}-table"><thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Name</th><th>Default</th><th>Forced</th><th>Format</th></tr></thead><tbody>${tableRows}</tbody></table>${editorControls}`,
       },
       { key: "file", label: "File", html: `<pre>${escapeHtml(prettyPrintJson(tracksJson))}</pre>` },
     ],
@@ -843,7 +863,7 @@ async function renderEpisodeDetail(episodeId) {
   const scanPanelHtml = `
     <div class="detail-columns">
       <div>${buildChaptersSection("scan-chapters", ep.chapters)}</div>
-      <div>${buildTrackSection("scan-tracks", ep.track_metadata)}</div>
+      <div>${buildTrackSection("scan-tracks", ep.track_metadata, { editable: true, locked: ep.locked })}</div>
     </div>
   `;
   const backupPanelHtml = ep.has_backup
@@ -932,6 +952,68 @@ async function renderEpisodeDetail(episodeId) {
     } catch (err) {
       toast(`Failed to clear: ${err.message}`, "error");
     }
+  });
+
+  wireTrackFlagEditor(panel, ep);
+}
+
+// Wires the Save/Cancel/Save for Season controls under the (editable)
+// scanned track table in the episode detail view. Checkboxes are edited
+// locally and only sent to the server on Save - Cancel just resets them to
+// the values the table was rendered with, no API call.
+function wireTrackFlagEditor(panel, ep) {
+  const table = document.getElementById("scan-tracks-table");
+  if (!table) return;
+  const checkboxes = Array.from(table.querySelectorAll("input[data-track-flag]"));
+  if (checkboxes.length === 0) return;
+
+  checkboxes.forEach((cb) => {
+    cb.dataset.originalChecked = String(cb.checked);
+  });
+
+  const collectFlags = () => {
+    const byTrackId = new Map();
+    checkboxes.forEach((cb) => {
+      const id = cb.dataset.trackId;
+      if (!byTrackId.has(id)) byTrackId.set(id, { id: Number(id), default: false, forced: false });
+      byTrackId.get(id)[cb.dataset.trackFlag] = cb.checked;
+    });
+    return Array.from(byTrackId.values());
+  };
+
+  panel.querySelector('[data-action="cancel-track-flags"]')?.addEventListener("click", () => {
+    checkboxes.forEach((cb) => {
+      cb.checked = cb.dataset.originalChecked === "true";
+    });
+  });
+
+  panel.querySelector('[data-action="save-track-flags"]')?.addEventListener("click", () => {
+    startJob(`/api/episodes/${ep.id}/track-flags`, () => renderEpisodeDetail(ep.id), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracks: collectFlags() }),
+    });
+  });
+
+  panel.querySelector('[data-action="save-track-flags-season"]')?.addEventListener("click", () => {
+    const seasonKey = ep.season || UNSORTED_SEASON;
+    const seasonLabel = ep.season ? `Season ${ep.season}` : "Unsorted";
+    if (
+      !confirm(
+        `Apply these default/forced flags to every episode in ${seasonLabel} whose tracks match "${ep.filename}"? Episodes with a different track layout are skipped.`
+      )
+    ) {
+      return;
+    }
+    startJob(
+      `/api/shows/${ep.show_id}/season/track-flags${seasonQuery(seasonKey)}`,
+      () => renderEpisodeDetail(ep.id),
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tracks: collectFlags(), reference_episode_id: ep.id }),
+      }
+    );
   });
 }
 

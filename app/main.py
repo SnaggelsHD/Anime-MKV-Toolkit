@@ -36,6 +36,7 @@ from app.restore import restore_chapters_for_episode, restore_library, restore_s
 from app.scan import scan_episode, scan_library, scan_season, scan_show
 from app.scanner import sync_episodes, sync_libraries, sync_shows
 from app.statistics import compute_statistics
+from app.track_flags import apply_episode_track_flags, apply_season_track_flags, track_layout_signature
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("mkv_backup")
@@ -774,6 +775,65 @@ def clean_library_endpoint(library_id: int, dry_run: bool = False, db: Session =
         cleanup_library(scan_db, cleanup_db, scan_db.get(Library, library_id), on_result=on_result, dry_run=dry_run)
 
     label = f'Dry run: clean up library "{library.name}"' if dry_run else f'Clean up library "{library.name}"'
+    job_id = launch_cleanup_job(label, total, work)
+    return {"job_id": job_id}
+
+
+# --- Track flags (manual default/forced editor) ---------------------------
+#
+# Separate from the broader cleanup feature: lets the UI toggle just the
+# default/forced flags on an already-scanned episode's tracks (or the same
+# toggles across a whole season, when the tracks line up) via mkvpropedit,
+# without touching titles, tags, or track names. Reuses the cleanup job
+# launcher purely for its scan_db/on_result plumbing - it never touches
+# cleanup.db.
+
+
+@app.put("/api/episodes/{episode_id}/track-flags")
+def set_episode_track_flags_endpoint(episode_id: int, payload: dict, db: Session = Depends(get_db)):
+    episode = db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    flags = payload.get("tracks")
+    if not isinstance(flags, list):
+        raise HTTPException(status_code=400, detail="tracks must be a list")
+
+    def work(scan_db, cleanup_db, on_result):
+        on_result(apply_episode_track_flags(scan_db, scan_db.get(Episode, episode_id), flags))
+
+    job_id = launch_cleanup_job(f"Save track flags for {episode.filename}", 1, work)
+    return {"job_id": job_id}
+
+
+@app.put("/api/shows/{show_id}/season/track-flags")
+def set_season_track_flags_endpoint(
+    show_id: int, payload: dict, season: str | None = None, db: Session = Depends(get_db)
+):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    flags = payload.get("tracks")
+    reference_episode_id = payload.get("reference_episode_id")
+    if not isinstance(flags, list) or not reference_episode_id:
+        raise HTTPException(status_code=400, detail="tracks and reference_episode_id are required")
+
+    reference_episode = db.get(Episode, reference_episode_id)
+    if reference_episode is None or reference_episode.show_id != show_id:
+        raise HTTPException(status_code=404, detail="Reference episode not found")
+    reference_tm = db.query(TrackMetadata).filter(TrackMetadata.episode_id == reference_episode.id).first()
+    if reference_tm is None:
+        raise HTTPException(status_code=400, detail="Reference episode has not been scanned")
+    reference_signature = track_layout_signature(reference_tm.tracks_json)
+
+    episodes = sync_episodes(db, show)
+    total = sum(1 for ep in episodes if ep.season == season)
+
+    def work(scan_db, cleanup_db, on_result):
+        apply_season_track_flags(
+            scan_db, scan_db.get(Show, show_id), season, flags, reference_signature, on_result=on_result
+        )
+
+    label = f'Save track flags for Season {season} of "{show.name}"' if season else f'Save track flags for Unsorted episodes of "{show.name}"'
     job_id = launch_cleanup_job(label, total, work)
     return {"job_id": job_id}
 
