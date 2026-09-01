@@ -45,6 +45,45 @@ function wirePosterImages(root) {
   });
 }
 
+function closeAllMenus() {
+  document.querySelectorAll(".menu-dropdown").forEach((el) => {
+    el.hidden = true;
+  });
+}
+document.addEventListener("click", () => closeAllMenus());
+
+// Wires each "..." menu button found under `root` to show/hide its dropdown.
+// The dropdown's own click listener runs in the capture phase so it can close
+// the menu before the click reaches an individual action button - but it must
+// NOT call stopPropagation() for a button click: stopPropagation() during the
+// capture phase stops dispatch from ever reaching the target at all, which
+// would silently kill every action button's own click handler. It only stops
+// propagation for a click on the dropdown's own blank space, so that doesn't
+// bubble up and trigger the row's select/expand handler.
+function wireMenus(root) {
+  root.querySelectorAll(".menu-wrap").forEach((wrap) => {
+    const toggle = wrap.querySelector('[data-action="toggle-menu"]');
+    const dropdown = wrap.querySelector(".menu-dropdown");
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wasHidden = dropdown.hidden;
+      closeAllMenus();
+      dropdown.hidden = !wasHidden;
+    });
+    dropdown.addEventListener(
+      "click",
+      (e) => {
+        if (e.target.closest("button")) {
+          dropdown.hidden = true;
+        } else {
+          e.stopPropagation();
+        }
+      },
+      true
+    );
+  });
+}
+
 function formatTimestamp(iso) {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -241,10 +280,15 @@ function renderLibraries() {
           </div>
         </div>
         <div class="item-actions">
-          <button data-action="scan-library">Scan</button>
-          <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
-          <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
-          <button data-action="dryrun-library">Dry Run</button>
+          <div class="menu-wrap">
+            <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+            <div class="menu-dropdown" hidden>
+              <button data-action="scan-library">Scan</button>
+              <button class="primary" data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
+              <button data-action="clean-library">${lib.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+              <button data-action="dryrun-library">Dry Run</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -280,6 +324,7 @@ function renderLibraries() {
       e.stopPropagation();
       startJob(withDryRun(`/api/cleanup/libraries/${lib.id}/clean`), (job) => openDryRunResults(job));
     });
+    wireMenus(div);
     list.appendChild(div);
   }
 }
@@ -327,9 +372,14 @@ function renderShowDetail() {
           <div class="item-actions">
             <button data-action="scan-show" data-show-id="${show.id}">${show.scanned_count > 0 ? "Rescan" : "Scan"}</button>
             <button class="primary" data-action="backup-show" data-show-id="${show.id}">${show.backed_up_count > 0 ? "Re-backup" : "Backup"}</button>
-            <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
-            <button data-action="clean-show" data-show-id="${show.id}">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
-            <button data-action="dryrun-show" data-show-id="${show.id}">Dry Run</button>
+            <div class="menu-wrap">
+              <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+              <div class="menu-dropdown" hidden>
+                <button data-action="restore-show" data-show-id="${show.id}">Restore</button>
+                <button data-action="clean-show" data-show-id="${show.id}">${show.cleaned_count > 0 ? "Re-clean" : "Clean"}</button>
+                <button data-action="dryrun-show" data-show-id="${show.id}">Dry Run</button>
+              </div>
+            </div>
             <button class="danger" data-action="clear-show" data-show-id="${show.id}">Clear</button>
           </div>
         </div>
@@ -344,6 +394,7 @@ function renderShowDetail() {
   `;
 
   wirePosterImages(detail);
+  wireMenus(detail);
   detail.querySelectorAll('[data-show-id]').forEach((el) => {
     if (el.classList.contains("item-row")) {
       el.addEventListener("click", () => toggleShowEpisodes(Number(el.dataset.showId)));
@@ -490,8 +541,13 @@ function renderEpisodes(showId, container) {
         <div class="item-actions">
           <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup" : "Backup"}</button>
-          <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean" : "Clean"}</button>
-          <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run</button>
+          <div class="menu-wrap">
+            <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+            <div class="menu-dropdown" hidden>
+              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}">${cleanedCount > 0 ? "Re-clean" : "Clean"}</button>
+              <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}">Dry Run</button>
+            </div>
+          </div>
           <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear</button>
         </div>
       </div>`;
@@ -515,6 +571,7 @@ function renderEpisodes(showId, container) {
   }
   container.innerHTML = html;
   wirePosterImages(container);
+  wireMenus(container);
   container.querySelectorAll("[data-episode-id]").forEach((el) =>
     el.addEventListener("click", () => openEpisodeDetail(Number(el.dataset.episodeId)))
   );
@@ -795,9 +852,14 @@ async function openEpisodeDetail(episodeId) {
         <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
           <button data-action="scan-episode">${hasScan ? "Rescan" : "Scan"}</button>
           <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup this episode" : "Backup this episode"}</button>
-          <button data-action="restore-episode">Restore chapters</button>
-          <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
-          <button data-action="dryrun-episode">Dry Run</button>
+          <div class="menu-wrap">
+            <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
+            <div class="menu-dropdown" hidden>
+              <button data-action="restore-episode">Restore chapters</button>
+              <button data-action="clean-episode">${ep.has_cleanup ? "Re-clean this episode" : "Clean this episode"}</button>
+              <button data-action="dryrun-episode">Dry Run</button>
+            </div>
+          </div>
           <button class="danger" data-action="clear-episode-backup">Clear Backup</button>
         </div>
         <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
@@ -814,6 +876,7 @@ async function openEpisodeDetail(episodeId) {
     if (e.target.id === "modal-backdrop") closeModal();
   });
   wireToggleGroups(modalRoot);
+  wireMenus(modalRoot);
   modalRoot.querySelector('[data-action="close-modal"]').addEventListener("click", closeModal);
   modalRoot.querySelector('[data-action="scan-episode"]').addEventListener("click", () => {
     if (hasScan && !confirm(`Rescan "${ep.filename}"? This re-extracts chapters and mediainfo from the file on disk, overwriting the current scan data. Backed-up data is not affected.`)) {
