@@ -328,12 +328,15 @@ show/season/episode you already picked in the Library tab):
    undoing a bad save, so back up the episode first if you want that
    safety net.
 
-Chapter naming is configurable per type (Prologue/Opening/Episode/Ending/
-Epilogue/End) from **Settings → Chapter Analyzer Naming Schema**, with two
+Chapter naming is configurable per type (Prologue/Opening/Ending/Epilogue/
+End) from **Settings → Chapter Analyzer Naming Schema**, with two
 placeholders: `{episode}` (the episode number) and `{n}` (the chapter's
-occurrence number within its type for that episode). The **End** chapter
-is never detected - it's always the zero-length marker at the file's exact
-last timestamp. **Settings → Chapter Analyzer** also has the match
+occurrence number within its type for that episode). **Episode** isn't
+in that list - its title is always plain "Episode", not configurable and
+never numbered, since the episode number is already shown everywhere else
+(filename, episode list, etc.). The **End** chapter is never detected -
+it's always the zero-length marker at the file's exact last timestamp.
+**Settings → Chapter Analyzer** also has the match
 confidence threshold (results below it are treated as "no match", falling
 back to a single Episode chapter spanning the whole file) and the
 animethemes.moe cache TTL; **Settings → Chapter Analyzer Cache** can force

@@ -13,7 +13,6 @@ router = APIRouter()
 class NamingSchema(BaseModel):
     prologue: str = "Prologue"
     opening: str = "Opening"
-    episode: str = "Episode"
     ending: str = "Ending"
     epilogue: str = "Epilogue"
     end: str = "End"
@@ -30,6 +29,10 @@ def _row_to_dict(row: ChapterizeSettings) -> dict:
         naming_schema = json.loads(row.naming_schema_json)
     except (json.JSONDecodeError, TypeError):
         naming_schema = dict(DEFAULT_NAMING_SCHEMA)
+    # The "episode" chapter's title is fixed to "Episode" (see jobs.py) and
+    # isn't part of the configurable schema - drop any stale key a
+    # pre-existing settings row might still carry from before that.
+    naming_schema.pop("episode", None)
     return {
         "naming_schema": naming_schema,
         "match_threshold": row.match_threshold,

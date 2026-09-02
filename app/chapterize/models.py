@@ -7,7 +7,6 @@ from app.chapterize.db import ChapterizeBase
 DEFAULT_NAMING_SCHEMA = {
     "prologue": "Prologue",
     "opening": "Opening",
-    "episode": "Episode",
     "ending": "Ending",
     "epilogue": "Epilogue",
     "end": "End",

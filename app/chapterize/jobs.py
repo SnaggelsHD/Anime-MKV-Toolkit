@@ -405,6 +405,13 @@ def _assemble_chapters(duration: float, op_chapter: dict | None, ed_chapter: dic
 
 def _chapter(ctype: str, start: float, end: float, schema: dict, episode_number: int,
              confidence: float | None = None, n: int = 1) -> dict:
-    template = schema.get(ctype, ctype.capitalize())
-    title = naming.render_title(template, n, episode_number)
+    if ctype == "episode":
+        # Not configurable: always plain "Episode", regardless of the
+        # naming schema (or of {episode}/{n} placeholders) - a per-episode
+        # number here would just repeat what the episode/season list
+        # already shows.
+        title = "Episode"
+    else:
+        template = schema.get(ctype, ctype.capitalize())
+        title = naming.render_title(template, n, episode_number)
     return {"type": ctype, "start": start, "end": end, "title": title, "confidence": confidence}

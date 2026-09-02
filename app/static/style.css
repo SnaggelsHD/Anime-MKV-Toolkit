@@ -752,7 +752,7 @@ pre {
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);
 }
-.old-chapters-panel h4 {
+.chapterize-subheading {
   margin: 0 0 0.3rem;
   font-size: 0.78rem;
   font-weight: 700;

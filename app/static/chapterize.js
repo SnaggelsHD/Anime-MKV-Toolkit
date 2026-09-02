@@ -6,6 +6,9 @@
 // parseChapterAtoms/formatChapterTime are all globals it defines).
 
 const CHAPTERIZE_CHAPTER_TYPES = ["prologue", "opening", "episode", "ending", "epilogue", "end"];
+// "episode" isn't configurable - its title is always plain "Episode" (see
+// jobs.py), so it's excluded from the naming schema settings form.
+const CHAPTERIZE_NAMING_TYPES = CHAPTERIZE_CHAPTER_TYPES.filter((t) => t !== "episode");
 const CHAPTERIZE_LAST_JOB_KEY = "chapterize_last_job_id";
 
 const chapterizeState = {
@@ -389,6 +392,13 @@ function renderChapterizeResults() {
       card.appendChild(buildOldChaptersBlock(ep.old_chapters_xml));
     }
 
+    if (!ep.error) {
+      const newHeading = document.createElement("h4");
+      newHeading.className = "chapterize-subheading";
+      newHeading.textContent = "New chapters (after analysis)";
+      card.appendChild(newHeading);
+    }
+
     const rowsWrap = document.createElement("div");
     ep.chapters.forEach((ch, chIndex) => renderChapterizeChapterRow(rowsWrap, ep, epIndex, ch, chIndex));
     card.appendChild(rowsWrap);
@@ -432,6 +442,7 @@ function buildOldChaptersBlock(oldChaptersXml) {
   const wrap = document.createElement("div");
   wrap.className = "old-chapters-panel";
   const heading = document.createElement("h4");
+  heading.className = "chapterize-subheading";
   heading.textContent = "Existing chapters (before analysis)";
   wrap.appendChild(heading);
 
@@ -693,7 +704,7 @@ async function loadChapterizeSettings() {
   try {
     const settings = await api("/api/chapterize/settings");
     form.innerHTML = "";
-    CHAPTERIZE_CHAPTER_TYPES.forEach((type) => {
+    CHAPTERIZE_NAMING_TYPES.forEach((type) => {
       const label = document.createElement("label");
       label.textContent = type[0].toUpperCase() + type.slice(1);
       const input = document.createElement("input");
@@ -712,7 +723,7 @@ async function loadChapterizeSettings() {
 
 async function saveChapterizeSettingsFromForm() {
   const naming_schema = {};
-  CHAPTERIZE_CHAPTER_TYPES.forEach((type) => {
+  CHAPTERIZE_NAMING_TYPES.forEach((type) => {
     naming_schema[type] = document.getElementById(`chapterize-naming-${type}`).value || type;
   });
   const payload = {
