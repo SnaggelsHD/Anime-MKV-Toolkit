@@ -112,10 +112,11 @@ list. Show rows in the left list carry no buttons of their own since
 clicking one always opens that action set in the detail panel; season and
 library rows keep Scan/Backup visible with everything else (Clean, Dry Run,
 Clear) behind a "☰" menu, and every button is labeled with its scope (e.g.
-"Scan Show", "Rescan Season", "Backup Episode") so it's clear what it acts
-on. The show detail view (the panel a show row opens) and the episode
-detail view are the two exceptions to the "☰" menu pattern: all of their
-actions sit in one flat row instead.
+"Scan Show", "Backup Episode") so it's clear what it acts on, and repeats
+with "Again" once already done once (e.g. "Scan Season Again", "Clean
+Episode Again"). The show detail view (the panel a show row opens) and
+the episode detail view are the two exceptions to the "☰" menu pattern:
+all of their actions sit in one flat row instead.
 
 The workflow is **scan, then backup, then (optionally, later) restore**:
 
@@ -191,9 +192,10 @@ chapters are restored.
 ## Metadata cleanup
 
 A separate feature from scan/backup/restore, with its own database
-(`cleanup.db`), surfaced through **Clean**/**Re-clean** buttons alongside the
-Scan/Backup/Restore buttons at every level of the Library tab (library, show,
-season, episode). It normalizes track languages/names and strips noisy
+(`cleanup.db`), surfaced through a **Clean** button (**Clean Again** once
+already cleaned) alongside the Scan/Backup/Restore buttons at every level
+of the Library tab (library, show, season, episode). It normalizes track
+languages/names and strips noisy
 container metadata from anime MKV rips — the same rules a prior standalone
 `mkv_cleanup.py` script applied, now built into the app:
 
@@ -245,9 +247,9 @@ first, though it does trigger an automatic rescan immediately afterward so
 the scan database (and the episode detail view's Track Metadata table) stays
 in sync with the file's new track names/languages — no manual rescan needed.
 It never touches the backup database. Run it per episode, season, show, or
-library; each already-cleaned scope shows a **Re-clean** button that confirms
-before overwriting. Every scope also has a **Dry Run** button that runs the
-same inspection but skips the `mkvpropedit` step entirely, so no file is
+library; each already-cleaned scope shows a **Clean Again** button that
+confirms before overwriting. Every scope also has a **Dry Run** button
+that runs the same inspection but skips the `mkvpropedit` step entirely, so no file is
 touched — it opens a popup listing exactly what each field would change to
 (and any warnings), for previewing before committing to a real cleanup. Dry
 runs never need confirmation and never affect the cleaned/scanned indicators

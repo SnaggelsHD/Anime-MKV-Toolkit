@@ -317,9 +317,9 @@ function renderLibrarySummary() {
           <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
           <div class="menu-dropdown" hidden>
             <button data-action="scan-library">Scan Library</button>
-            <button data-action="backup-library">${lib.backed_up_count > 0 ? "Re-backup Library" : "Backup Library"}</button>
+            <button data-action="backup-library">${lib.backed_up_count > 0 ? "Backup Library Again" : "Backup Library"}</button>
             <button data-action="restore-library"${lockedDisabledAttr(lib.locked)}>Restore Library</button>
-            <button data-action="clean-library"${lockedDisabledAttr(lib.locked)}>${lib.cleaned_count > 0 ? "Re-clean Library" : "Clean Library"}</button>
+            <button data-action="clean-library"${lockedDisabledAttr(lib.locked)}>${lib.cleaned_count > 0 ? "Clean Library Again" : "Clean Library"}</button>
             <button data-action="dryrun-library"${lockedDisabledAttr(lib.locked)}>Dry Run Library</button>
             <button data-action="toggle-hide-locked">${state.hideLockedShows ? "Show Locked Shows" : "Hide Locked Shows"}</button>
           </div>
@@ -477,12 +477,12 @@ function renderEpisodes(showId, container, showLocked = false) {
           <span class="season-heading">${label} • ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned</span>
         </div>
         <div class="item-actions">
-          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Rescan Season" : "Scan Season"}</button>
-          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Re-backup Season" : "Backup Season"}</button>
+          <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Scan Season Again" : "Scan Season"}</button>
+          <button class="primary" data-action="backup-season" data-season="${escapeHtml(seasonKey)}" data-backed-up-count="${backedUpCount}">${backedUpCount > 0 ? "Backup Season Again" : "Backup Season"}</button>
           <div class="menu-wrap">
             <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
             <div class="menu-dropdown" hidden>
-              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}"${lockedDisabledAttr(showLocked)}>${cleanedCount > 0 ? "Re-clean Season" : "Clean Season"}</button>
+              <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}"${lockedDisabledAttr(showLocked)}>${cleanedCount > 0 ? "Clean Season Again" : "Clean Season"}</button>
               <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}"${lockedDisabledAttr(showLocked)}>Dry Run Season</button>
               <button data-action="analyze-season" data-season="${escapeHtml(seasonKey)}"${lockedDisabledAttr(showLocked)}>Analyze Chapters</button>
               <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear Season</button>
@@ -812,10 +812,10 @@ async function renderShowOverview(showId) {
       <button data-action="close-detail" aria-label="Close" title="Close">×</button>
     </div>
     <div class="item-actions" style="margin: 0.75rem 0;">
-      <button data-action="scan-show">${show.scanned_count > 0 ? "Rescan Show" : "Scan Show"}</button>
-      <button class="primary" data-action="backup-show">${show.backed_up_count > 0 ? "Re-backup Show" : "Backup Show"}</button>
+      <button data-action="scan-show">${show.scanned_count > 0 ? "Scan Show Again" : "Scan Show"}</button>
+      <button class="primary" data-action="backup-show">${show.backed_up_count > 0 ? "Backup Show Again" : "Backup Show"}</button>
       <button data-action="restore-show"${lockedDisabledAttr(show.locked)}>Restore Show</button>
-      <button data-action="clean-show"${lockedDisabledAttr(show.locked)}>${show.cleaned_count > 0 ? "Re-clean Show" : "Clean Show"}</button>
+      <button data-action="clean-show"${lockedDisabledAttr(show.locked)}>${show.cleaned_count > 0 ? "Clean Show Again" : "Clean Show"}</button>
       <button data-action="dryrun-show"${lockedDisabledAttr(show.locked)}>Dry Run Show</button>
       <button class="danger" data-action="clear-show">Clear Show</button>
     </div>
@@ -928,10 +928,10 @@ async function renderEpisodeDetail(episodeId) {
     <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))} • Cleaned up: ${escapeHtml(formatTimestamp(ep.cleaned_at))}</p>
     ${ep.cleanup_ok === false ? `<p class="item-sub" style="color:var(--danger);">Cleanup failed: ${escapeHtml(ep.cleanup_error || "unknown error")}</p>` : ""}
     <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
-      <button data-action="scan-episode">${hasScan ? "Rescan Episode" : "Scan Episode"}</button>
-      <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Re-backup Episode" : "Backup Episode"}</button>
+      <button data-action="scan-episode">${hasScan ? "Scan Episode Again" : "Scan Episode"}</button>
+      <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Backup Episode Again" : "Backup Episode"}</button>
       <button data-action="restore-episode"${lockedDisabledAttr(ep.locked)}>Restore Episode</button>
-      <button data-action="clean-episode"${lockedDisabledAttr(ep.locked)}>${ep.has_cleanup ? "Re-clean Episode" : "Clean Episode"}</button>
+      <button data-action="clean-episode"${lockedDisabledAttr(ep.locked)}>${ep.has_cleanup ? "Clean Episode Again" : "Clean Episode"}</button>
       <button data-action="dryrun-episode"${lockedDisabledAttr(ep.locked)}>Dry Run Episode</button>
       <button data-action="analyze-episode"${lockedDisabledAttr(ep.locked)}>Analyze Chapters</button>
       <button class="danger" data-action="clear-episode-backup">Clear Episode Backup</button>
