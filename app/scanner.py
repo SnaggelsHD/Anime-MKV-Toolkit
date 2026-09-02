@@ -2,6 +2,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -134,7 +135,7 @@ def _read_tvshow_locked(show_path: str) -> bool:
     return locked_el.text.strip().lower() == "true"
 
 
-def sync_shows(db: Session, library: Library) -> list[Show]:
+def sync_shows(db: Session, library: Library, backup_db: Optional[Session] = None) -> list[Show]:
     existing = {show.name: show for show in db.query(Show).filter(Show.library_id == library.id).all()}
     found_names = set()
     for name, path in find_shows(library.path):
@@ -148,14 +149,33 @@ def sync_shows(db: Session, library: Library) -> list[Show]:
             show.path = path
             show.missing = False
             show.locked = locked
+
+    # Collect show names that exist in the backup DB so we can decide what to
+    # do with shows no longer on disk (mark missing vs. purge entirely).
+    backed_up_show_names: set[str] = set()
+    if backup_db is not None:
+        from app.backup_models import BackupLibrary
+        backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == library.name).first()
+        if backup_lib:
+            backed_up_show_names = {bs.name for bs in backup_lib.shows}
+
     for name, show in existing.items():
         if name not in found_names:
-            show.missing = True
+            has_scanned = (
+                db.query(Episode)
+                .filter(Episode.show_id == show.id, Episode.last_scanned_at.isnot(None))
+                .first()
+            ) is not None
+            if has_scanned or name in backed_up_show_names:
+                show.missing = True
+            else:
+                db.delete(show)
+
     db.commit()
     return db.query(Show).filter(Show.library_id == library.id).order_by(Show.name).all()
 
 
-def sync_episodes(db: Session, show: Show) -> list[Episode]:
+def sync_episodes(db: Session, show: Show, backup_db: Optional[Session] = None) -> list[Episode]:
     existing = {ep.filename: ep for ep in db.query(Episode).filter(Episode.show_id == show.id).all()}
     found_filenames = set()
     for scanned in find_episodes(show.path):
@@ -176,8 +196,30 @@ def sync_episodes(db: Session, show: Show) -> list[Episode]:
             ep.season = scanned.season
             ep.episode = scanned.episode
             ep.missing = False
+
+    # Collect filenames backed up for this show so we can decide what to do
+    # with episodes no longer on disk (mark missing vs. purge entirely).
+    backed_up_filenames: set[str] = set()
+    if backup_db is not None:
+        from app.backup_models import BackupLibrary, BackupShow as BackupShowModel
+        library = db.get(Library, show.library_id)
+        if library:
+            backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == library.name).first()
+            if backup_lib:
+                backup_show_row = (
+                    backup_db.query(BackupShowModel)
+                    .filter(BackupShowModel.library_id == backup_lib.id, BackupShowModel.name == show.name)
+                    .first()
+                )
+                if backup_show_row:
+                    backed_up_filenames = {be.filename for be in backup_show_row.episodes}
+
     for filename, ep in existing.items():
         if filename not in found_filenames:
-            ep.missing = True
+            if ep.last_scanned_at is not None or filename in backed_up_filenames:
+                ep.missing = True
+            else:
+                db.delete(ep)
+
     db.commit()
     return db.query(Episode).filter(Episode.show_id == show.id).order_by(Episode.filename).all()

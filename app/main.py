@@ -269,7 +269,7 @@ def list_libraries(
     libraries = sync_libraries(db, LIBRARIES_ROOT)
     result = []
     for lib in libraries:
-        shows = sync_shows(db, lib)
+        shows = sync_shows(db, lib, backup_db)
         backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == lib.name).first()
         backed_up_count = sum(len(bs.episodes) for bs in backup_lib.shows) if backup_lib else 0
         result.append(
@@ -297,12 +297,12 @@ def list_shows(
     library = db.get(Library, library_id)
     if library is None:
         raise HTTPException(status_code=404, detail="Library not found")
-    shows = sync_shows(db, library)
+    shows = sync_shows(db, library, backup_db)
     backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == library.name).first()
 
     result = []
     for show in shows:
-        episodes = sync_episodes(db, show)
+        episodes = sync_episodes(db, show, backup_db)
         scanned_count = sum(1 for ep in episodes if ep.last_scanned_at is not None)
         backed_up_count = 0
         if backup_lib is not None:
@@ -340,7 +340,7 @@ def list_episodes(
     show = db.get(Show, show_id)
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
-    episodes = sync_episodes(db, show)
+    episodes = sync_episodes(db, show, backup_db)
     result = []
     for ep in episodes:
         backup_info = _episode_backup_info(backup_db, ep)
