@@ -13,6 +13,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.backup import backup_episode, backup_library, backup_season, backup_show
 from app.backup_db import BackupSessionLocal, get_backup_db, init_backup_db
 from app.backup_models import BackupEpisode, BackupLibrary, BackupShow
+from app.chapterize import animethemes as chapterize_animethemes
+from app.chapterize.config import cleanup_tmp_dir as chapterize_cleanup_tmp_dir, ensure_dirs as chapterize_ensure_dirs
+from app.chapterize.db import init_chapterize_db, load_settings as chapterize_load_settings
+from app.chapterize.routers import analyze as chapterize_analyze_router
+from app.chapterize.routers import animethemes as chapterize_animethemes_router
+from app.chapterize.routers import settings as chapterize_settings_router
 from app.cleanup import cleanup_episode, cleanup_library, cleanup_season, cleanup_show
 from app.cleanup_db import STEP_TOGGLE_COLUMNS, CleanupSessionLocal, get_cleanup_db, init_cleanup_db
 from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupSettings, CleanupShow
@@ -57,6 +63,10 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(NoCacheStaticMiddleware)
 
+app.include_router(chapterize_analyze_router.router, prefix="/api/chapterize/analyze", tags=["chapterize"])
+app.include_router(chapterize_animethemes_router.router, prefix="/api/chapterize/animethemes", tags=["chapterize"])
+app.include_router(chapterize_settings_router.router, prefix="/api/chapterize/settings", tags=["chapterize"])
+
 
 @app.on_event("startup")
 def on_startup():
@@ -70,6 +80,10 @@ def on_startup():
     init_db()
     init_backup_db()
     init_cleanup_db()
+    init_chapterize_db()
+    chapterize_ensure_dirs()
+    chapterize_cleanup_tmp_dir()
+    chapterize_animethemes.prune_expired_cache(chapterize_load_settings().get("animethemes_cache_ttl_days", 30))
 
 
 def launch_job(label: str, total: int, work) -> str:

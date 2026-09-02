@@ -484,6 +484,7 @@ function renderEpisodes(showId, container, showLocked = false) {
             <div class="menu-dropdown" hidden>
               <button data-action="clean-season" data-season="${escapeHtml(seasonKey)}" data-cleaned-count="${cleanedCount}"${lockedDisabledAttr(showLocked)}>${cleanedCount > 0 ? "Re-clean Season" : "Clean Season"}</button>
               <button data-action="dryrun-season" data-season="${escapeHtml(seasonKey)}"${lockedDisabledAttr(showLocked)}>Dry Run Season</button>
+              <button data-action="analyze-season" data-season="${escapeHtml(seasonKey)}"${lockedDisabledAttr(showLocked)}>Analyze Chapters</button>
               <button class="danger" data-action="clear-season" data-season="${escapeHtml(seasonKey)}">Clear Season</button>
             </div>
           </div>
@@ -575,6 +576,15 @@ function renderEpisodes(showId, container, showLocked = false) {
       } catch (err) {
         toast(`Failed to clear: ${err.message}`, "error");
       }
+    })
+  );
+  container.querySelectorAll('[data-action="analyze-season"]').forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const season = btn.dataset.season === UNSORTED_SEASON ? null : btn.dataset.season;
+      const seasonEpisodes = state.episodes.filter((ep) => (ep.season || null) === season);
+      const show = state.shows.find((s) => s.id === showId);
+      openChapterizeView(show, seasonEpisodes);
     })
   );
 }
@@ -923,6 +933,7 @@ async function renderEpisodeDetail(episodeId) {
       <button data-action="restore-episode"${lockedDisabledAttr(ep.locked)}>Restore Episode</button>
       <button data-action="clean-episode"${lockedDisabledAttr(ep.locked)}>${ep.has_cleanup ? "Re-clean Episode" : "Clean Episode"}</button>
       <button data-action="dryrun-episode"${lockedDisabledAttr(ep.locked)}>Dry Run Episode</button>
+      <button data-action="analyze-episode"${lockedDisabledAttr(ep.locked)}>Analyze Chapters</button>
       <button class="danger" data-action="clear-episode-backup">Clear Episode Backup</button>
     </div>
     <nav class="tabs" style="padding:0; margin-bottom:0.75rem;">
@@ -958,6 +969,10 @@ async function renderEpisodeDetail(episodeId) {
       return;
     }
     startJob(`/api/episodes/${episodeId}/restore`);
+  });
+  panel.querySelector('[data-action="analyze-episode"]').addEventListener("click", () => {
+    const show = state.shows.find((s) => s.id === ep.show_id);
+    openChapterizeView(show, [ep]);
   });
   panel.querySelector('[data-action="clean-episode"]').addEventListener("click", () => {
     if (
@@ -1117,6 +1132,9 @@ function initTabs() {
       for (const [tab, id] of Object.entries(viewIds)) {
         document.getElementById(id).style.display = btn.dataset.tab === tab ? "" : "none";
       }
+      // The chapterize screen isn't a tab of its own (it's reached from a
+      // season/episode) - clicking a real tab while it's open should leave it.
+      document.getElementById("view-chapterize").style.display = "none";
     });
   });
 }

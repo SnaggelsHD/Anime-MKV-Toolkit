@@ -29,6 +29,66 @@
       <p class="placeholder-text">Select a show or episode to see its details.</p>
     </section>
   </main>
+  <main id="view-chapterize" style="display:none;">
+    <button type="button" class="back-link" id="chapterize-back">‹ Back</button>
+    <section class="panel">
+      <h2 id="chapterize-heading" style="margin-top:0;">Analyze Chapters</h2>
+      <p class="item-sub" id="chapterize-episode-summary"></p>
+      <div id="chapterize-episode-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Match against animethemes.moe</h2>
+      <div class="settings-actions">
+        <input type="text" id="chapterize-anime-search" placeholder="Search anime title...">
+        <button type="button" id="chapterize-anime-search-btn">Search</button>
+      </div>
+      <div id="chapterize-anime-results" class="anime-results"></div>
+      <div id="chapterize-theme-picker" class="theme-picker"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Run analysis</h2>
+      <div class="mode-picker">
+        <label class="mode-option">
+          <input type="radio" name="chapterize-mode" id="chapterize-mode-match-all" value="match_all" checked>
+          <div>
+            <strong>Match all themes</strong>
+            <p class="item-sub">Try every selected OP/ED against each episode. If a theme turns up more than once
+              (e.g. an opening reused as an insert song), you'll pick the right one in the results view.</p>
+          </div>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="chapterize-mode" id="chapterize-mode-episode-mapped" value="episode_mapped">
+          <div>
+            <strong>Use per-episode OP/ED assignment</strong>
+            <p class="item-sub">Look for the OP/ED animethemes.moe assigns to that episode first, and only try the
+              other selected themes if nothing is found.</p>
+          </div>
+        </label>
+      </div>
+      <p class="item-sub">Either way, a match found in the first half of an episode is treated as an opening and one
+        found in the second half as an ending, regardless of how animethemes.moe tags it.</p>
+      <div class="settings-actions">
+        <button type="button" id="chapterize-start-btn" disabled>Start analysis</button>
+        <button type="button" id="chapterize-cancel-btn" class="danger" hidden>Cancel</button>
+      </div>
+      <div id="chapterize-progress-wrap" hidden>
+        <p id="chapterize-progress-status" class="item-sub"></p>
+        <div class="progress-bar"><div id="chapterize-progress-fill" class="progress-fill"></div></div>
+        <pre id="chapterize-log" class="analysis-log"></pre>
+      </div>
+    </section>
+
+    <section class="panel" id="chapterize-results-panel" style="display:none;">
+      <h2>Review &amp; edit chapters</h2>
+      <div id="chapterize-results-list"></div>
+      <div class="settings-actions">
+        <button type="button" id="chapterize-save-btn">Save chapters to MKV files</button>
+      </div>
+      <p id="chapterize-save-status" class="item-sub"></p>
+    </section>
+  </main>
   <main id="view-settings" style="display:none;">
     <section class="panel">
       <h2>Global Scan / Backup / Restore</h2>
@@ -98,6 +158,41 @@
     </section>
 
     <section class="panel">
+      <h2>Chapter Analyzer Naming Schema</h2>
+      <p class="item-sub">
+        Use <code>{n}</code> for the running number within that chapter type (e.g. multiple OP/ED in one
+        episode) and <code>{episode}</code> for the episode number.
+      </p>
+      <div class="form-grid" id="chapterize-naming-form">Loading...</div>
+    </section>
+
+    <section class="panel">
+      <h2>Chapter Analyzer</h2>
+      <p class="item-sub">
+        Detects Prologue/Opening/Episode/Ending/Epilogue chapters by matching episode audio against
+        animethemes.moe OP/ED songs. Reached via the "Analyze Chapters" button on a season or episode.
+      </p>
+      <label class="field-row">Match confidence threshold
+        <input type="number" id="chapterize-setting-threshold" min="0" max="1" step="0.05">
+      </label>
+      <label class="field-row">animethemes.moe cache TTL (days)
+        <input type="number" id="chapterize-setting-cache-ttl" min="1" step="1">
+      </label>
+      <div class="settings-actions" style="margin-top:0.75rem;">
+        <button type="button" id="chapterize-save-settings-btn">Save</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Chapter Analyzer Cache</h2>
+      <p class="item-sub">
+        Cached animethemes.moe theme audio expires automatically after the TTL above. Use this to force a
+        clean re-download of everything right now (e.g. after a bad match caused by a corrupt download).
+      </p>
+      <button type="button" class="danger" id="chapterize-clear-cache-btn">Clear cached theme audio</button>
+    </section>
+
+    <section class="panel">
       <h2>Export</h2>
       <p class="item-sub">Download the backup database file (backup.db) for safekeeping.</p>
       <a class="button-link" id="export-backup-link" href="/api/backup/export" download="backup.db">Export backup database</a>
@@ -116,5 +211,6 @@
   <div id="modal-root"></div>
   <div id="task-queue"></div>
   <script src="/app.js"></script>
+  <script src="/chapterize.js"></script>
 </body>
 </html>

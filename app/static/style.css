@@ -9,6 +9,7 @@
   --accent-soft: rgba(59, 109, 214, 0.09);
   --danger: #c0392b;
   --ok: #1e8e5a;
+  --warn: #b8860b;
   --code-bg: #f7f9fc;
   --hover: rgba(15, 23, 42, 0.05);
   --radius: 6px;
@@ -26,6 +27,7 @@
     --accent-soft: rgba(92, 139, 239, 0.16);
     --danger: #e05c4b;
     --ok: #3ecb85;
+    --warn: #d9a441;
     --code-bg: #171a21;
     --hover: rgba(255, 255, 255, 0.07);
   }
@@ -42,6 +44,7 @@
   --accent-soft: rgba(92, 139, 239, 0.16);
   --danger: #e05c4b;
   --ok: #3ecb85;
+  --warn: #d9a441;
   --code-bg: #171a21;
   --hover: rgba(255, 255, 255, 0.07);
 }
@@ -379,7 +382,7 @@ button.danger:hover { background: var(--danger); color: #fff; }
   color: var(--muted);
 }
 
-input[type="text"] {
+input[type="text"], input[type="number"] {
   font: inherit;
   color: inherit;
   background: var(--panel);
@@ -614,5 +617,244 @@ pre {
   color: var(--muted);
 }
 .task-card.has-failures .task-card-status { color: var(--danger); }
+
+/* --- Chapter analyzer -------------------------------------------------- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 0.6rem 1rem;
+  align-items: center;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+}
+.field-row input { width: 100px; }
+
+.chapterize-episode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px dashed var(--border);
+}
+.chapterize-episode-row:last-child { border-bottom: none; }
+.chapterize-episode-number { width: 56px; text-align: center; }
+
+.anime-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.anime-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.anime-card:hover { border-color: var(--accent); }
+.anime-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+
+.mode-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+}
+.mode-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.mode-option input[type="radio"] { margin-top: 0.2rem; }
+.mode-option strong { font-size: 0.9rem; }
+.mode-option p { margin: 0.2rem 0 0; }
+
+.theme-picker { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge.prologue { background: rgba(124, 92, 255, 0.15); color: #7c5cff; }
+.badge.opening { background: var(--accent-soft); color: var(--accent); }
+.badge.episode { background: rgba(30, 142, 90, 0.15); color: var(--ok); }
+.badge.ending { background: rgba(184, 134, 11, 0.15); color: var(--warn); }
+.badge.epilogue { background: rgba(214, 59, 149, 0.15); color: #d63b95; }
+.badge.end { background: var(--hover); color: var(--muted); }
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--hover);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.75rem 0 0.5rem;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.analysis-log {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-line.warn { color: var(--warn); }
+.log-line.err { color: var(--danger); }
+.log-line.ok { color: var(--ok); }
+
+.episode-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.episode-card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+
+.old-chapters-panel {
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.old-chapters-panel h4 {
+  margin: 0 0 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.chapter-row {
+  display: grid;
+  grid-template-columns: auto 42px 90px 100px 100px 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+}
+.chapter-row input[type="text"] { width: 100%; padding: 0.3rem 0.4rem; }
+.time-input { width: 90px; }
+
+.confidence-badge {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+}
+.confidence-badge.low { color: var(--warn); }
+
+.chapter-row.needs-review {
+  background: rgba(184, 134, 11, 0.1);
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+}
+
+.candidate-picker {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.2rem 0 0.5rem;
+  padding: 0.5rem;
+  border: 1px dashed var(--warn);
+  border-radius: 6px;
+  background: rgba(184, 134, 11, 0.06);
+}
+.candidate-picker .candidate-title { font-size: 0.78rem; color: var(--warn); font-weight: 600; }
+.candidate-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+}
+.candidate-option:hover { background: var(--hover); }
+.candidate-option.chosen { background: var(--accent-soft); }
+
+.preview-block {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.preview-block video {
+  width: 100%;
+  max-height: 360px;
+  border-radius: 6px;
+  background: #000;
+  display: block;
+}
+
+.chapter-jump-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.chapter-jump-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.chapter-jump-btn:hover { border-color: var(--accent); }
+.chapter-jump-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.chapter-jump-time { font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+
+.chapter-jump-btn.prologue { border-left: 3px solid #7c5cff; }
+.chapter-jump-btn.opening { border-left: 3px solid var(--accent); }
+.chapter-jump-btn.episode { border-left: 3px solid var(--ok); }
+.chapter-jump-btn.ending { border-left: 3px solid var(--warn); }
+.chapter-jump-btn.epilogue { border-left: 3px solid #d63b95; }
+.chapter-jump-btn.end { border-left: 3px solid var(--muted); }
 .task-card.error .task-card-status { color: var(--danger); }
 

@@ -3,8 +3,10 @@
 A Dockerized web app for managing an anime MKV library: back up and restore
 chapter data and track metadata (mediainfo) using a two-phase
 **scan → backup** workflow so backed-up data survives even if the source
-files are later moved, renamed, or temporarily missing — and clean up noisy
-track/container metadata on the files themselves, all from one web UI.
+files are later moved, renamed, or temporarily missing — clean up noisy
+track/container metadata on the files themselves, and detect and write in
+Prologue/Opening/Episode/Ending/Epilogue chapters automatically by matching
+episode audio against animethemes.moe, all from one web UI.
 
 Matching is done by `(library, show, filename)` only — files are not hashed,
 so this assumes stable filenames (e.g. as produced by TinyMediaManager).
@@ -17,7 +19,10 @@ separate backup database, and restore writes backed-up chapters back into the
 MKV files. All three (plus clearing backup data) work at the episode, season,
 show, library, or all-libraries level, through a web UI with live progress and
 dark mode. Track metadata restore (re-applying track names/languages/flags) is
-not implemented — only chapter restore, per the original scope.
+not implemented — only chapter restore, per the original scope. The chapter
+analyzer (merged in from a companion project, see below) is also
+feature-complete: search, theme matching, review/edit, video preview, and
+save all work end-to-end.
 
 ## Requirements
 
@@ -86,6 +91,12 @@ Two separate SQLite databases live under `./data` on the host (mounted to
 - `cleanup.db` — tracks metadata cleanup results (see below), completely
   independent of the other two. Override with `CLEANUP_DB_PATH` (defaults to
   `/data/cleanup.db`).
+- `chapterize.db` — the chapter analyzer's settings (naming schema, match
+  threshold, animethemes.moe cache TTL). Override with `CHAPTERIZE_DB_PATH`
+  (defaults to `/data/chapterize.db`). Its animethemes.moe theme-audio cache
+  and video-preview cache live under `/data/chapterize/` (override the root
+  with `CHAPTERIZE_CACHE_DIR`), safe to delete anytime since both are
+  rebuilt on demand.
 
 ## Using the UI
 
@@ -163,6 +174,10 @@ Additional UI notes:
   A library's "☰" menu also has a **Hide Locked Shows**/**Show Locked
   Shows** toggle to filter locked shows out of its show list; the choice
   is remembered in the browser (`localStorage`), not per library.
+- An **Analyze Chapters** button (in a season's "☰" menu, and in the flat
+  action row of the episode detail view) opens the chapter analyzer
+  screen pre-loaded with that season's or episode's file(s) - see
+  "Chapter analyzer" below.
 
 Matching between what's on disk, the scan database, and the backup database is
 done by `(library name, show name, filename)` only — files are not hashed or
@@ -266,6 +281,68 @@ yes/no text; toggle any of them and:
 Like Clean/Restore, editing track flags is refused for a locked show, both
 in the button/checkbox state and at the API level.
 
+## Chapter analyzer
+
+Merged in from a companion project (Anime Chapterizer), this detects
+Prologue/Opening/Episode/Ending/Epilogue chapters by matching each
+episode's audio against the actual OP/ED theme songs from
+[animethemes.moe](https://animethemes.moe) (chroma cross-correlation, not
+exact audio fingerprinting), and writes them in via `mkvpropedit` - no
+re-encoding. A final **End** marker is always added at the file's exact
+last timestamp too.
+
+Reached via the **Analyze Chapters** button on a season or an episode
+(there's no separate library browser for it - it reuses whatever
+show/season/episode you already picked in the Library tab):
+
+1. The pre-selected episode list shows each file with its parsed episode
+   number, editable if the parser got it wrong (it drives `{episode}` in
+   chapter titles, and per-episode OP/ED assignment in that recognition
+   mode).
+2. Search animethemes.moe for the show and pick which OP/ED themes to
+   match against (a show can have more than one across cours - pick
+   whichever apply to the episodes you're analyzing); theme audio is
+   downloaded once per show and cached.
+3. Pick a recognition mode: **Match all themes** tries every selected
+   theme against every episode; **Use per-episode OP/ED assignment**
+   looks up which theme animethemes.moe assigns to each episode and tries
+   that first, only falling back to the others if nothing matches. Either
+   way, a match is classified as an opening or ending by *where* it lands
+   in the episode (first half vs. second half), not by which tag
+   animethemes.moe gives it - so a theme reused as that episode's ending
+   still ends up in the Ending chapter. A theme matching more than once
+   (e.g. an OP reused as an insert song) shows all candidates so you can
+   pick the right one.
+4. **Start analysis** shows live progress and a log as each episode's
+   audio is extracted and compared, with a Cancel button; a concurrency
+   limit queues extra analyses instead of piling every job's audio work
+   onto the CPU at once.
+5. Review the results: each episode shows its **existing chapters**
+   (read straight from the file, for comparison) next to the newly
+   detected ones. Edit any start/end time, title, or type, remove a
+   chapter, or add a custom one; a **Preview** button loads a scrubbable
+   video for that episode with a jump button per chapter (color-coded by
+   type, reflecting your current edits).
+6. **Save chapters to MKV files** writes them in. There's no separate
+   backup step here - this app's own scan/backup/restore already covers
+   undoing a bad save, so back up the episode first if you want that
+   safety net.
+
+Chapter naming is configurable per type (Prologue/Opening/Episode/Ending/
+Epilogue/End) from **Settings → Chapter Analyzer Naming Schema**, with two
+placeholders: `{episode}` (the episode number) and `{n}` (the chapter's
+occurrence number within its type for that episode). The **End** chapter
+is never detected - it's always the zero-length marker at the file's exact
+last timestamp. **Settings → Chapter Analyzer** also has the match
+confidence threshold (results below it are treated as "no match", falling
+back to a single Episode chapter spanning the whole file) and the
+animethemes.moe cache TTL; **Settings → Chapter Analyzer Cache** can force
+a clean re-download of everything.
+
+Like Clean/Restore/track-flag editing, saving chapters is refused for a
+locked show (the **Analyze Chapters** button itself is disabled for one);
+analysis itself is read-only so it isn't blocked, only the save.
+
 ## Notes
 
 - No file hashing/checksums — matching is filename-based, so it assumes
@@ -274,3 +351,8 @@ in the button/checkbox state and at the API level.
   in the UI); a large library scan or backup may take a while to finish.
 - Logs (including per-episode scan/backup/restore success and failure) go to
   stdout — view them with `docker compose logs -f`.
+- The chapter analyzer adds `ffmpeg` and Python audio-analysis libraries
+  (`numpy`/`scipy`/`librosa`/`soundfile`) to the image, so a build takes
+  noticeably longer and the image is noticeably larger than before it was
+  merged in. Its own analysis jobs (with live log/progress streaming) run
+  independently of the scan/backup/restore/cleanup task queue.
