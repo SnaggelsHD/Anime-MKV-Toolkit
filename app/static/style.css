@@ -152,8 +152,7 @@ main {
   gap: 1rem;
 }
 
-#view-settings .panel + .panel,
-#view-statistics .panel + .panel { margin-top: 1rem; }
+#view-settings .panel + .panel { margin-top: 1rem; }
 
 .panel {
   background: var(--panel);
@@ -617,89 +616,3 @@ pre {
 .task-card.has-failures .task-card-status { color: var(--danger); }
 .task-card.error .task-card-status { color: var(--danger); }
 
-.stats-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 0.75rem;
-}
-
-.stat-card {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.75rem;
-  text-align: center;
-}
-.stat-card .stat-value {
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1.2;
-  word-break: break-word;
-}
-.stat-card .stat-label {
-  font-size: 0.7rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-top: 0.3rem;
-}
-
-.stats-charts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
-}
-
-.stat-chart {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.75rem;
-}
-.stat-chart h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.stat-bar-row {
-  display: grid;
-  grid-template-columns: 90px 1fr auto;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.2rem 0;
-  font-size: 0.8rem;
-}
-.stat-bar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.stat-bar-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--border);
-  overflow: hidden;
-}
-.stat-bar-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 999px;
-}
-.stat-bar-count {
-  color: var(--muted);
-  min-width: 1.5rem;
-  text-align: right;
-}
-
-.stats-subheading {
-  margin: 1.25rem 0 0.5rem 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}

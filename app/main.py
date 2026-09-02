@@ -35,7 +35,6 @@ from app.models import Chapters, Episode, Library, Show, TrackMetadata
 from app.restore import restore_chapters_for_episode, restore_library, restore_show
 from app.scan import scan_episode, scan_library, scan_season, scan_show
 from app.scanner import sync_episodes, sync_libraries, sync_shows
-from app.statistics import compute_statistics
 from app.track_flags import apply_episode_track_flags, apply_season_track_flags, track_layout_signature
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -259,35 +258,6 @@ def list_libraries(
             }
         )
     return result
-
-
-@app.get("/api/statistics")
-def get_statistics(
-    library_id: int | None = None,
-    db: Session = Depends(get_db),
-    backup_db: Session = Depends(get_backup_db),
-    cleanup_db: Session = Depends(get_cleanup_db),
-):
-    """Aggregate stats (languages/codecs/resolutions/sizes/durations) from
-    whatever's already been scanned - this reads the existing scan database
-    as-is rather than re-walking the filesystem, so it stays fast even for
-    large libraries. Pass library_id to scope to one library."""
-    if library_id is not None and db.get(Library, library_id) is None:
-        raise HTTPException(status_code=404, detail="Library not found")
-
-    stats = compute_statistics(db, library_id=library_id)
-
-    libraries = db.query(Library).all() if library_id is None else [db.get(Library, library_id)]
-    backed_up_count = 0
-    cleaned_count = 0
-    for lib in libraries:
-        backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == lib.name).first()
-        if backup_lib:
-            backed_up_count += sum(len(bs.episodes) for bs in backup_lib.shows)
-        cleaned_count += _library_cleaned_count(cleanup_db, lib.name)
-    stats["overview"]["backed_up_count"] = backed_up_count
-    stats["overview"]["cleaned_count"] = cleaned_count
-    return stats
 
 
 @app.get("/api/libraries/{library_id}/shows")

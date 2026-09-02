@@ -266,35 +266,6 @@ yes/no text; toggle any of them and:
 Like Clean/Restore, editing track flags is refused for a locked show, both
 in the button/checkbox state and at the API level.
 
-## Statistics
-
-The Statistics tab aggregates everything already sitting in the scan
-database's stored mediainfo reports — it doesn't touch disk or re-scan
-anything, so it stays fast even for large libraries and simply reflects
-whatever's been scanned as of your last **Scan**. A dropdown at the top
-scopes everything below to one library or all of them:
-
-- **Overview**: library/show/episode counts, how many are scanned/backed
-  up/cleaned/missing, total size on disk, total runtime, and average
-  episode length/size.
-- **Languages & Codecs**: bar charts of audio languages, subtitle languages,
-  video codecs, audio codecs, and resolution (bucketed as 480p/720p/1080p/
-  1440p/2160p), counted per *track*: a two-audio-track episode counts
-  toward two languages.
-- **Size & Duration by Library**: a table breaking total size and runtime
-  down per library.
-- **File Sizes**: a size-distribution histogram (bucketed from `< 500 MB`
-  up to `8 GB+`) plus four ranking tables: largest shows, largest seasons,
-  largest episodes, and smallest episodes (the last two capped at 10 and 5
-  entries), each with its show/library for context, useful for spotting
-  what's actually eating disk space or an oddly small/corrupt file.
-
-Everything is rendered with plain HTML/CSS (no charting library, no CDN
-dependency) so it keeps working fully offline. Language names are matched
-from mediainfo's own short codes (e.g. `ja` → Japanese, `de` → German) via
-a small built-in table separate from the cleanup feature's own language
-table, since mediainfo and mkvmerge report language codes differently.
-
 ## Notes
 
 - No file hashing/checksums — matching is filename-based, so it assumes
