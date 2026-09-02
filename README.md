@@ -101,10 +101,12 @@ Two separate SQLite databases live under `./data` on the host (mounted to
 
 ## Using the UI
 
-The Library tab is a library switcher (top right, next to dark mode) plus a
-two-column layout, capped at 80% of the window width so there's a margin on
-both sides: a flat list of shows for the selected library on the left, and a
-drill-down detail panel on the right. The two columns scroll independently
+The Library tab has a library switcher and a **↻ Refresh** button in the
+header (top right, next to dark mode) — clicking Refresh re-fetches the show
+list for the current library without reloading the page. The main content
+area is capped at 90% of the window width (≈5% margin on each side), arranged
+as a two-column layout: a wider flat list of shows for the selected library on
+the left, and a drill-down detail panel on the right. The two columns scroll independently
 and the page itself never scrolls, so scrolling through a long show list
 never drags the detail panel along with it (and vice versa). Each show row
 is a fixed height regardless of title length - a title longer than two
@@ -145,7 +147,9 @@ Additional UI notes:
 - Each library, show, season, and episode shows how many of its episodes are
   scanned and backed up. A show or episode that used to exist on disk but
   doesn't anymore is flagged **MISSING** rather than removed — rescan it once
-  the files are back to clear the flag.
+  the files are back to clear the flag. A show or episode that disappears
+  from disk before it was ever scanned or backed up is silently deleted from
+  the database instead (nothing was worth keeping).
 - Clicking a show shows its overview, seasons, and episodes in the
   right-hand detail panel. Clicking an episode there replaces that panel
   with its chapters and track metadata side by side (each toggles between a
