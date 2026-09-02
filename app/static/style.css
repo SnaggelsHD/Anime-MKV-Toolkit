@@ -146,14 +146,17 @@ select {
   padding: 0.35rem 0.5rem;
 }
 
-#library-select {
+#library-refresh-btn {
   margin-left: auto;
+}
+
+#library-select {
   max-width: 240px;
 }
 
 main {
   padding: 1rem 1.5rem;
-  max-width: 80%;
+  max-width: 90%;
   width: 100%;
   margin: 0 auto;
   flex: 1;
@@ -167,7 +170,7 @@ main {
    show list on the left never moves the detail panel on the right. */
 #view-library {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 460px 1fr;
   gap: 1rem;
   height: 100%;
   overflow: hidden;

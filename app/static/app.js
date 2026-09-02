@@ -1534,6 +1534,9 @@ function initLibrarySelect() {
     const id = Number(e.target.value);
     if (id) selectLibrary(id);
   });
+  document.getElementById("library-refresh-btn").addEventListener("click", () => {
+    if (state.selectedLibraryId) selectLibrary(state.selectedLibraryId);
+  });
 }
 
 initTheme();
