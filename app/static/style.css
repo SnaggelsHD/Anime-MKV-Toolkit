@@ -51,11 +51,18 @@
 
 * { box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+}
+
 body {
   font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 header {
@@ -65,6 +72,7 @@ header {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .theme-switch {
@@ -146,13 +154,23 @@ select {
 main {
   padding: 1rem 1.5rem;
   max-width: 80%;
+  width: 100%;
   margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
+/* The Library view scrolls its two panels independently (see #shows-panel/
+   #detail-panel below) instead of scrolling as a whole, so scrolling the
+   show list on the left never moves the detail panel on the right. */
 #view-library {
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 1rem;
+  height: 100%;
+  overflow: hidden;
 }
 
 #view-settings .panel + .panel { margin-top: 1rem; }
@@ -162,6 +180,27 @@ main {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1rem;
+}
+
+#shows-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#shows-panel > #library-summary,
+#shows-panel > h2 {
+  flex-shrink: 0;
+}
+#shows-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#detail-panel {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 h2 {
@@ -203,6 +242,26 @@ h2 {
 
 .item-name { font-weight: 600; }
 .item-sub { font-size: 0.8rem; color: var(--muted); }
+
+/* Every show row is the same height regardless of title length: the name
+   reserves exactly two lines (clamped with an ellipsis if longer) and the
+   subtitle stays a single line, so a one-line title doesn't leave the row
+   shorter than a two-line one. */
+.show-item .item-row { min-height: 62px; }
+.item-name-text { flex: 1; min-width: 0; }
+.show-item .item-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25em;
+  height: 2.5em;
+}
+.show-item .item-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 
@@ -306,6 +365,7 @@ h2 {
   gap: 0.5rem;
   min-width: 0;
 }
+.season-heading-text { min-width: 0; }
 
 .back-link {
   border: none;
@@ -404,10 +464,20 @@ input[type="text"], input[type="number"] {
 }
 
 .season-heading {
-  font-size: 0.8rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.extras-heading {
+  margin: 0.6rem 0 0.25rem 0;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .badge-missing {

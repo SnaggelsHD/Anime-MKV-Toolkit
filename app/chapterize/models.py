@@ -1,8 +1,13 @@
 import json
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, Float, Integer, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, Text
 
 from app.chapterize.db import ChapterizeBase
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 DEFAULT_NAMING_SCHEMA = {
     "prologue": "Prologue",
@@ -25,3 +30,20 @@ class ChapterizeSettings(ChapterizeBase):
     # comfortable margin on both sides.
     match_threshold = Column(Float, nullable=False, default=0.8)
     animethemes_cache_ttl_days = Column(Integer, nullable=False, default=30)
+
+
+class ChapterizeResult(ChapterizeBase):
+    """One row per Toolkit episode (by id) that a "Save chapters to MKV
+    files" actually wrote to (or attempted and failed on) - not written for
+    an episode that was skipped without an attempt (locked show, analysis
+    error). Keyed by the Toolkit's own Episode.id rather than mirroring
+    library/show/episode names like cleanup_models.py does, since this
+    feature has no independent existence from the Toolkit's own scan DB."""
+
+    __tablename__ = "chapterize_results"
+
+    id = Column(Integer, primary_key=True)
+    episode_id = Column(Integer, unique=True, nullable=False, index=True)
+    analyzed_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    ok = Column(Boolean, nullable=False, default=False)
+    error = Column(Text, nullable=True)

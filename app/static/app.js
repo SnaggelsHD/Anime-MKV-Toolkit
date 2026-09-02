@@ -414,8 +414,8 @@ function renderShowsList() {
         <div class="item-row" data-show-id="${show.id}">
           <div class="item-name-wrap">
             <img class="poster-thumb" data-poster-src="/api/shows/${show.id}/poster" alt="">
-            <div>
-              <div class="item-name">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""} ${lockedBadge(show.locked)}</div>
+            <div class="item-name-text">
+              <div class="item-name" title="${escapeHtml(show.name)}">${escapeHtml(show.name)}${show.missing ? ' <span class="badge-missing">MISSING</span>' : ""} ${lockedBadge(show.locked)}</div>
               <div class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</div>
             </div>
           </div>
@@ -447,6 +447,64 @@ function renderShowsList() {
   });
 }
 
+// Numeric seasons sort ascending first, then non-numeric named "seasons"
+// (e.g. a folder like "Openings & Endings" that isn't a real season)
+// alphabetically, then Unsorted last.
+function seasonLabel(seasonKey) {
+  if (seasonKey === UNSORTED_SEASON) return "Unsorted";
+  return /^\d+$/.test(seasonKey) ? `Season ${seasonKey}` : seasonKey;
+}
+
+function seasonSortKey(seasonKey) {
+  if (seasonKey === UNSORTED_SEASON) return [2, 0, ""];
+  if (/^\d+$/.test(seasonKey)) return [0, parseInt(seasonKey, 10), ""];
+  return [1, 0, seasonKey.toLowerCase()];
+}
+
+function compareSeasonKeys(a, b) {
+  const ka = seasonSortKey(a);
+  const kb = seasonSortKey(b);
+  for (let i = 0; i < ka.length; i++) {
+    if (ka[i] < kb[i]) return -1;
+    if (ka[i] > kb[i]) return 1;
+  }
+  return 0;
+}
+
+// Episodes filed under an "Extras" subfolder of a season (e.g.
+// "Season 01/Extras/OVA.mkv") are still grouped under that season, but
+// rendered after a small divider instead of interleaved with the regular
+// episodes.
+function isExtraEpisode(ep) {
+  return /[\\/]extras[\\/]/i.test(ep.path);
+}
+
+function episodeRowHtml(ep) {
+  let cleanFlag;
+  if (!ep.has_cleanup) cleanFlag = '<span class="flag-missing">cleaned ✗</span>';
+  else if (ep.cleanup_ok) cleanFlag = '<span class="flag-ok">cleaned ✓</span>';
+  else cleanFlag = '<span class="flag-missing">cleanup failed ✗</span>';
+
+  let analyzedFlag;
+  if (!ep.has_chapters_analyzed) analyzedFlag = '<span class="flag-missing">analyzed ✗</span>';
+  else if (ep.chapters_analyzed_ok) analyzedFlag = '<span class="flag-ok">analyzed ✓</span>';
+  else analyzedFlag = '<span class="flag-missing">analysis failed ✗</span>';
+
+  return `
+        <div class="episode-row" data-episode-id="${ep.id}">
+          <div class="episode-name">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
+          <div class="flags">
+            <span class="${ep.has_scan ? "flag-ok" : "flag-missing"}">${ep.has_scan ? "scanned ✓" : "scanned ✗"}</span>
+            &nbsp;
+            <span class="${ep.has_backup ? "flag-ok" : "flag-missing"}">${ep.has_backup ? "backed up ✓" : "backed up ✗"}</span>
+            &nbsp;
+            ${cleanFlag}
+            &nbsp;
+            ${analyzedFlag}
+          </div>
+        </div>`;
+}
+
 function renderEpisodes(showId, container, showLocked = false) {
   if (state.episodes.length === 0) {
     container.innerHTML = '<p class="placeholder-text">No episodes found.</p>';
@@ -459,13 +517,15 @@ function renderEpisodes(showId, container, showLocked = false) {
     if (!bySeason.has(key)) bySeason.set(key, []);
     bySeason.get(key).push(ep);
   }
+  const seasonEntries = Array.from(bySeason.entries()).sort((a, b) => compareSeasonKeys(a[0], b[0]));
 
   let html = "";
-  for (const [seasonKey, eps] of bySeason) {
-    const label = seasonKey === UNSORTED_SEASON ? "Unsorted" : `Season ${escapeHtml(seasonKey)}`;
+  for (const [seasonKey, eps] of seasonEntries) {
+    const label = seasonLabel(seasonKey);
     const scannedCount = eps.filter((e) => e.has_scan).length;
     const backedUpCount = eps.filter((e) => e.has_backup).length;
     const cleanedCount = eps.filter((e) => e.cleanup_ok).length;
+    const analyzedCount = eps.filter((e) => e.chapters_analyzed_ok).length;
     const seasonPosterAttr =
       seasonKey === UNSORTED_SEASON
         ? ""
@@ -474,7 +534,10 @@ function renderEpisodes(showId, container, showLocked = false) {
       <div class="season-heading-row">
         <div class="season-heading-wrap">
           <img class="poster-thumb" ${seasonPosterAttr} alt="">
-          <span class="season-heading">${label} • ${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned</span>
+          <div class="season-heading-text">
+            <div class="season-heading">${escapeHtml(label)}</div>
+            <div class="item-sub">${eps.length} eps, ${scannedCount} scanned, ${backedUpCount} backed up, ${cleanedCount} cleaned, ${analyzedCount} analyzed</div>
+          </div>
         </div>
         <div class="item-actions">
           <button data-action="scan-season" data-season="${escapeHtml(seasonKey)}" data-scanned-count="${scannedCount}">${scannedCount > 0 ? "Scan Season Again" : "Scan Season"}</button>
@@ -490,22 +553,13 @@ function renderEpisodes(showId, container, showLocked = false) {
           </div>
         </div>
       </div>`;
-    for (const ep of eps) {
-      let cleanFlag;
-      if (!ep.has_cleanup) cleanFlag = '<span class="flag-missing">cleaned ✗</span>';
-      else if (ep.cleanup_ok) cleanFlag = '<span class="flag-ok">cleaned ✓</span>';
-      else cleanFlag = '<span class="flag-missing">cleanup failed ✗</span>';
-      html += `
-        <div class="episode-row" data-episode-id="${ep.id}">
-          <div class="episode-name">${escapeHtml(ep.filename)}${ep.missing ? ' <span class="badge-missing">MISSING</span>' : ""}</div>
-          <div class="flags">
-            <span class="${ep.has_scan ? "flag-ok" : "flag-missing"}">${ep.has_scan ? "scanned ✓" : "scanned ✗"}</span>
-            &nbsp;
-            <span class="${ep.has_backup ? "flag-ok" : "flag-missing"}">${ep.has_backup ? "backed up ✓" : "backed up ✗"}</span>
-            &nbsp;
-            ${cleanFlag}
-          </div>
-        </div>`;
+
+    const mainEps = eps.filter((ep) => !isExtraEpisode(ep));
+    const extraEps = eps.filter(isExtraEpisode);
+    for (const ep of mainEps) html += episodeRowHtml(ep);
+    if (extraEps.length > 0) {
+      html += `<div class="extras-heading">Extras</div>`;
+      for (const ep of extraEps) html += episodeRowHtml(ep);
     }
   }
   container.innerHTML = html;
@@ -517,7 +571,7 @@ function renderEpisodes(showId, container, showLocked = false) {
   container.querySelectorAll('[data-action="scan-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      const label = seasonLabel(btn.dataset.season);
       if (
         Number(btn.dataset.scannedCount) > 0 &&
         !confirm(`Rescan ${label}? This re-extracts chapters and mediainfo from the files on disk, overwriting the current scan data. Backed-up data is not affected.`)
@@ -530,7 +584,7 @@ function renderEpisodes(showId, container, showLocked = false) {
   container.querySelectorAll('[data-action="backup-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      const label = seasonLabel(btn.dataset.season);
       if (
         Number(btn.dataset.backedUpCount) > 0 &&
         !confirm(`Re-backup ${label}? This overwrites the existing backup with the current scan data.`)
@@ -543,7 +597,7 @@ function renderEpisodes(showId, container, showLocked = false) {
   container.querySelectorAll('[data-action="clean-season"]').forEach((btn) =>
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      const label = seasonLabel(btn.dataset.season);
       if (
         Number(btn.dataset.cleanedCount) > 0 &&
         !confirm(`Re-clean up ${label}? This rewrites track languages/names and container metadata in every MKV file in this season.`)
@@ -565,7 +619,7 @@ function renderEpisodes(showId, container, showLocked = false) {
   container.querySelectorAll('[data-action="clear-season"]').forEach((btn) =>
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const label = btn.dataset.season === UNSORTED_SEASON ? "Unsorted" : `Season ${btn.dataset.season}`;
+      const label = seasonLabel(btn.dataset.season);
       if (!confirm(`Clear backup data for ${label}? This cannot be undone. Files on disk and the scan database are never touched.`)) {
         return;
       }
@@ -925,8 +979,9 @@ async function renderEpisodeDetail(episodeId) {
       <button data-action="close-detail" aria-label="Close" title="Close">×</button>
     </div>
     <p class="item-sub">${escapeHtml(ep.path)}</p>
-    <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))} • Cleaned up: ${escapeHtml(formatTimestamp(ep.cleaned_at))}</p>
+    <p class="item-sub">Last scanned: ${escapeHtml(formatTimestamp(ep.last_scanned_at))} • Backed up: ${escapeHtml(formatTimestamp(ep.backed_up_at))} • Cleaned up: ${escapeHtml(formatTimestamp(ep.cleaned_at))} • Chapters analyzed: ${escapeHtml(formatTimestamp(ep.chapters_analyzed_at))}</p>
     ${ep.cleanup_ok === false ? `<p class="item-sub" style="color:var(--danger);">Cleanup failed: ${escapeHtml(ep.cleanup_error || "unknown error")}</p>` : ""}
+    ${ep.chapters_analyzed_ok === false ? `<p class="item-sub" style="color:var(--danger);">Chapter save failed: ${escapeHtml(ep.chapters_analyzed_error || "unknown error")}</p>` : ""}
     <div class="item-actions" style="margin: 0.5rem 0 1rem 0;">
       <button data-action="scan-episode">${hasScan ? "Scan Episode Again" : "Scan Episode"}</button>
       <button class="primary" data-action="backup-episode" ${hasScan ? "" : "disabled title=\"Scan this episode first\""}>${ep.has_backup ? "Backup Episode Again" : "Backup Episode"}</button>

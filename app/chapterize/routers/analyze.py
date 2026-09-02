@@ -10,9 +10,13 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from app.chapterize import audio_match, jobs, mkv_chapters, video_preview
+from app.chapterize.db import get_chapterize_db
+from app.chapterize.models import ChapterizeResult
+from app.chapterize.models import utcnow as chapterize_utcnow
 from app.chapterize.range_response import serve_file_with_ranges
 from app.db import get_db
 from app.models import Episode
+from app.scan import scan_episode
 
 logger = logging.getLogger("chapterize.analyze")
 
@@ -113,8 +117,22 @@ def update_chapters(job_id: str, req: UpdateChaptersRequest):
     return job.snapshot()
 
 
+def _record_chapterize_result(chapterize_db: Session, episode_id: int, ok: bool, error: str | None) -> None:
+    """Upsert a ChapterizeResult row for an episode a save actually
+    attempted (successfully or not) - not called for an episode skipped
+    without an attempt (locked show, prior analysis error)."""
+    row = chapterize_db.query(ChapterizeResult).filter(ChapterizeResult.episode_id == episode_id).first()
+    if row is None:
+        row = ChapterizeResult(episode_id=episode_id)
+        chapterize_db.add(row)
+    row.analyzed_at = chapterize_utcnow()
+    row.ok = ok
+    row.error = error
+    chapterize_db.commit()
+
+
 @router.post("/{job_id}/save")
-def save_chapters(job_id: str, db: Session = Depends(get_db)):
+def save_chapters(job_id: str, db: Session = Depends(get_db), chapterize_db: Session = Depends(get_chapterize_db)):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job")
@@ -147,9 +165,18 @@ def save_chapters(job_id: str, db: Session = Depends(get_db)):
                 for c in chapters
             ]
             mkv_chapters.write_chapters(Path(episode.path), entries)
+            _record_chapterize_result(chapterize_db, episode.id, ok=True, error=None)
+            # Chapters just changed on disk; rescan immediately so the scan
+            # database (and the episode detail view) reflect it right away,
+            # the same way a successful cleanup already does.
+            try:
+                scan_episode(db, episode)
+            except Exception:
+                logger.exception("Post-save rescan failed for episode %s", episode.id)
             results.append({"episode_id": episode.id, "ok": True, "error": None})
         except Exception as e:
             logger.exception("Failed to save chapters for episode %s", episode.id)
+            _record_chapterize_result(chapterize_db, episode.id, ok=False, error=str(e))
             results.append({"episode_id": episode.id, "ok": False, "error": str(e)})
 
     return {"results": results}

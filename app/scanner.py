@@ -10,6 +10,14 @@ from app.models import Library, Show, Episode
 SEASON_EPISODE_RE = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})")
 SEASON_DIR_RE = re.compile(r"season\s*0*(\d+)", re.IGNORECASE)
 
+# Non-numbered top-level folders (siblings of the season folders) that a
+# library organizer commonly uses for clean OP/ED rips - grouped as their
+# own named "season" instead of falling into Unsorted.
+_SPECIAL_SEASON_FOLDERS = {
+    "openings & endings": "Openings & Endings",
+    "openings and endings": "Openings & Endings",
+}
+
 
 @dataclass
 class ScannedEpisode:
@@ -53,6 +61,13 @@ def _parse_season_episode(filename: str, rel_dir: str) -> tuple[str | None, str 
     match = SEASON_EPISODE_RE.search(filename)
     if match:
         return str(int(match.group(1))), str(int(match.group(2)))
+
+    # A special-named folder (e.g. "Openings & Endings") takes priority over
+    # the numeric season-folder regex below, since its files won't carry an
+    # S01E01-style episode number either.
+    top_level_dir = rel_dir.replace("\\", "/").strip("/").split("/")[0].lower()
+    if top_level_dir in _SPECIAL_SEASON_FOLDERS:
+        return _SPECIAL_SEASON_FOLDERS[top_level_dir], None
 
     season = None
     dir_match = SEASON_DIR_RE.search(rel_dir)

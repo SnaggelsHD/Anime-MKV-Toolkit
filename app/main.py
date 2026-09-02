@@ -15,7 +15,8 @@ from app.backup_db import BackupSessionLocal, get_backup_db, init_backup_db
 from app.backup_models import BackupEpisode, BackupLibrary, BackupShow
 from app.chapterize import animethemes as chapterize_animethemes
 from app.chapterize.config import cleanup_tmp_dir as chapterize_cleanup_tmp_dir, ensure_dirs as chapterize_ensure_dirs
-from app.chapterize.db import init_chapterize_db, load_settings as chapterize_load_settings
+from app.chapterize.db import get_chapterize_db, init_chapterize_db, load_settings as chapterize_load_settings
+from app.chapterize.models import ChapterizeResult
 from app.chapterize.routers import analyze as chapterize_analyze_router
 from app.chapterize.routers import animethemes as chapterize_animethemes_router
 from app.chapterize.routers import settings as chapterize_settings_router
@@ -205,6 +206,18 @@ def _episode_cleanup_info(cleanup_db: Session, episode: Episode) -> dict:
     }
 
 
+def _episode_chapterize_info(chapterize_db: Session, episode_id: int) -> dict:
+    result = chapterize_db.query(ChapterizeResult).filter(ChapterizeResult.episode_id == episode_id).first()
+    if result is None:
+        return {"has_chapters_analyzed": False, "chapters_analyzed_at": None, "chapters_analyzed_ok": None, "error": None}
+    return {
+        "has_chapters_analyzed": True,
+        "chapters_analyzed_at": result.analyzed_at,
+        "chapters_analyzed_ok": result.ok,
+        "error": result.error,
+    }
+
+
 POSTER_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 
 
@@ -322,6 +335,7 @@ def list_episodes(
     db: Session = Depends(get_db),
     backup_db: Session = Depends(get_backup_db),
     cleanup_db: Session = Depends(get_cleanup_db),
+    chapterize_db: Session = Depends(get_chapterize_db),
 ):
     show = db.get(Show, show_id)
     if show is None:
@@ -331,6 +345,7 @@ def list_episodes(
     for ep in episodes:
         backup_info = _episode_backup_info(backup_db, ep)
         cleanup_info = _episode_cleanup_info(cleanup_db, ep)
+        chapterize_info = _episode_chapterize_info(chapterize_db, ep.id)
         result.append(
             {
                 "id": ep.id,
@@ -344,6 +359,8 @@ def list_episodes(
                 "has_backup": backup_info["has_backup"],
                 "has_cleanup": cleanup_info["has_cleanup"],
                 "cleanup_ok": cleanup_info["cleanup_ok"],
+                "has_chapters_analyzed": chapterize_info["has_chapters_analyzed"],
+                "chapters_analyzed_ok": chapterize_info["chapters_analyzed_ok"],
             }
         )
     return result
@@ -355,6 +372,7 @@ def get_episode(
     db: Session = Depends(get_db),
     backup_db: Session = Depends(get_backup_db),
     cleanup_db: Session = Depends(get_cleanup_db),
+    chapterize_db: Session = Depends(get_chapterize_db),
 ):
     ep = db.get(Episode, episode_id)
     if ep is None:
@@ -363,6 +381,7 @@ def get_episode(
     track_metadata = db.query(TrackMetadata).filter(TrackMetadata.episode_id == ep.id).first()
     backup_info = _episode_backup_content(backup_db, ep)
     cleanup_info = _episode_cleanup_info(cleanup_db, ep)
+    chapterize_info = _episode_chapterize_info(chapterize_db, ep.id)
     return {
         "id": ep.id,
         "filename": ep.filename,
@@ -383,6 +402,10 @@ def get_episode(
         "cleaned_at": cleanup_info["cleaned_at"].isoformat() if cleanup_info["cleaned_at"] else None,
         "cleanup_ok": cleanup_info["cleanup_ok"],
         "cleanup_error": cleanup_info["error"],
+        "has_chapters_analyzed": chapterize_info["has_chapters_analyzed"],
+        "chapters_analyzed_at": chapterize_info["chapters_analyzed_at"].isoformat() if chapterize_info["chapters_analyzed_at"] else None,
+        "chapters_analyzed_ok": chapterize_info["chapters_analyzed_ok"],
+        "chapters_analyzed_error": chapterize_info["error"],
     }
 
 

@@ -92,18 +92,23 @@ Two separate SQLite databases live under `./data` on the host (mounted to
   independent of the other two. Override with `CLEANUP_DB_PATH` (defaults to
   `/data/cleanup.db`).
 - `chapterize.db` — the chapter analyzer's settings (naming schema, match
-  threshold, animethemes.moe cache TTL). Override with `CHAPTERIZE_DB_PATH`
-  (defaults to `/data/chapterize.db`). Its animethemes.moe theme-audio cache
-  and video-preview cache live under `/data/chapterize/` (override the root
-  with `CHAPTERIZE_CACHE_DIR`), safe to delete anytime since both are
-  rebuilt on demand.
+  threshold, animethemes.moe cache TTL) and, per episode, whether/when its
+  chapters were last saved by the analyzer. Override with
+  `CHAPTERIZE_DB_PATH` (defaults to `/data/chapterize.db`). Its
+  animethemes.moe theme-audio cache and video-preview cache live under
+  `/data/chapterize/` (override the root with `CHAPTERIZE_CACHE_DIR`),
+  safe to delete anytime since both are rebuilt on demand.
 
 ## Using the UI
 
 The Library tab is a library switcher (top right, next to dark mode) plus a
 two-column layout, capped at 80% of the window width so there's a margin on
 both sides: a flat list of shows for the selected library on the left, and a
-drill-down detail panel on the right. Clicking a show opens its overview
+drill-down detail panel on the right. The two columns scroll independently
+and the page itself never scrolls, so scrolling through a long show list
+never drags the detail panel along with it (and vice versa). Each show row
+is a fixed height regardless of title length - a title longer than two
+lines is truncated with "...". Clicking a show opens its overview
 there (poster, counts, its own actions, and its seasons/episodes); clicking
 one of those episodes replaces that same panel with the full episode view
 (chapters and track metadata side by side, timestamps, actions), with a
@@ -156,6 +161,16 @@ Additional UI notes:
   directly, for safekeeping outside the container.
 - Long-running scan/backup/restore operations show live progress in a task
   queue widget in the bottom-right corner rather than blocking the UI.
+- Each season heading in the show detail view shows the season's own name
+  (e.g. "Season 1") with its episode/scanned/backed-up/cleaned/analyzed
+  counts as a subtitle underneath, listed in that order (numbered seasons
+  first, then any specially-named folder, then Unsorted last). A top-level
+  show folder named "Openings & Endings" (a common place for clean OP/ED
+  rips, alongside the numbered season folders) is recognized and shown
+  under its own name instead of lumped into Unsorted. An "Extras" folder
+  inside a season is still grouped under that season, but its episodes are
+  set apart below an "Extras" divider instead of interleaved with the
+  regular episodes.
 - Show and season rows display the poster artwork already sitting in those
   folders — `poster.<ext>` directly inside the show folder, and `poster.<ext>`
   (or `season<NN>-poster.<ext>`) inside each season folder
@@ -328,7 +343,13 @@ show/season/episode you already picked in the Library tab):
 6. **Save chapters to MKV files** writes them in. There's no separate
    backup step here - this app's own scan/backup/restore already covers
    undoing a bad save, so back up the episode first if you want that
-   safety net.
+   safety net. A successful save also triggers an immediate rescan, the
+   same way a successful cleanup does, so the scan database and episode
+   detail view reflect the new chapters right away, and records an
+   "analyzed" timestamp for that episode: the show/season list's episode
+   rows and season subtitle (eps/scanned/backed up/cleaned/analyzed) pick
+   it up, and the episode detail view shows a "Chapters analyzed" time
+   alongside its other timestamps.
 
 Chapter naming is configurable per type (Prologue/Opening/Ending/Epilogue/
 End) from **Settings → Chapter Analyzer Naming Schema**, with two
