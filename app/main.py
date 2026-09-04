@@ -3,9 +3,10 @@ import logging
 import os
 import threading
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -23,6 +24,9 @@ from app.chapterize.routers import settings as chapterize_settings_router
 from app.cleanup import cleanup_episode, cleanup_library, cleanup_season, cleanup_show
 from app.cleanup_db import STEP_TOGGLE_COLUMNS, CleanupSessionLocal, get_cleanup_db, init_cleanup_db
 from app.cleanup_models import CleanupCodecMapping, CleanupEpisode, CleanupLibrary, CleanupSettings, CleanupShow
+from app.auth import SESSION_COOKIE, create_session, create_user, delete_session, get_user_by_username, hash_password, prune_expired_sessions, user_count, validate_session, verify_password
+from app.auth_db import AuthSessionLocal, get_auth_db, init_auth_db
+from app.auth_models import User
 from app.config import BACKUP_DB_PATH, CLEANUP_DB_PATH, DB_PATH, LIBRARIES_ROOT
 from app.db import SessionLocal, get_db, init_db
 from app.jobs import add_result, create_job, fail_job, finish_job, get_job, list_jobs
@@ -63,7 +67,25 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Block unauthenticated requests to /api/ routes (except /api/auth/ endpoints)."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/") and not path.startswith("/api/auth/"):
+            token = request.cookies.get(SESSION_COOKIE, "")
+            auth_db = AuthSessionLocal()
+            try:
+                user = validate_session(auth_db, token)
+            finally:
+                auth_db.close()
+            if user is None:
+                return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+        return await call_next(request)
+
+
 app.add_middleware(NoCacheStaticMiddleware)
+app.add_middleware(AuthMiddleware)
 
 app.include_router(chapterize_analyze_router.router, prefix="/api/chapterize/analyze", tags=["chapterize"])
 app.include_router(chapterize_animethemes_router.router, prefix="/api/chapterize/animethemes", tags=["chapterize"])
@@ -79,6 +101,7 @@ def on_startup():
         CLEANUP_DB_PATH,
         LIBRARIES_ROOT,
     )
+    init_auth_db()
     init_db()
     init_backup_db()
     init_cleanup_db()
@@ -248,6 +271,59 @@ def _show_cleaned_count(cleanup_db: Session, library_name: str, show_name: str) 
     if cleanup_show_row is None:
         return 0
     return sum(1 for ce in cleanup_show_row.episodes if ce.result is not None and ce.result.ok)
+
+
+class AuthPayload(BaseModel):
+    username: str
+    password: str
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request, auth_db: Session = Depends(get_auth_db)):
+    needs_setup = user_count(auth_db) == 0
+    token = request.cookies.get(SESSION_COOKIE, "")
+    user = validate_session(auth_db, token) if not needs_setup else None
+    return {
+        "needs_setup": needs_setup,
+        "authenticated": user is not None,
+        "username": user.username if user else None,
+    }
+
+
+@app.post("/api/auth/setup")
+def auth_setup(payload: AuthPayload, response: Response, auth_db: Session = Depends(get_auth_db)):
+    if user_count(auth_db) > 0:
+        raise HTTPException(status_code=400, detail="Setup already complete")
+    username = payload.username.strip()
+    password = payload.password
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    user = create_user(auth_db, username, password)
+    token = create_session(auth_db, user.id)
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
+    return {"ok": True, "username": user.username}
+
+
+@app.post("/api/auth/login")
+def auth_login(payload: AuthPayload, response: Response, auth_db: Session = Depends(get_auth_db)):
+    user = get_user_by_username(auth_db, payload.username)
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    prune_expired_sessions(auth_db)
+    token = create_session(auth_db, user.id)
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
+    return {"ok": True, "username": user.username}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request, response: Response, auth_db: Session = Depends(get_auth_db)):
+    token = request.cookies.get(SESSION_COOKIE, "")
+    if token:
+        delete_session(auth_db, token)
+    response.delete_cookie(SESSION_COOKIE)
+    return {"ok": True}
 
 
 @app.get("/api/health")

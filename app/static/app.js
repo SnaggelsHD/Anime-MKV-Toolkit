@@ -157,6 +157,10 @@ function toast(message, kind = "ok") {
 
 async function api(path, options) {
   const res = await fetch(path, options);
+  if (res.status === 401) {
+    showAuthOverlay(false);
+    throw new Error("Session expired. Please sign in again.");
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -1556,9 +1560,99 @@ function initLibrarySelect() {
   });
 }
 
+function showAuthOverlay(setup) {
+  const overlay = document.getElementById("auth-overlay");
+  overlay.hidden = false;
+  document.getElementById("auth-setup-form").hidden = !setup;
+  document.getElementById("auth-login-form").hidden = setup;
+  if (setup) {
+    document.getElementById("auth-setup-username").focus();
+  } else {
+    document.getElementById("auth-login-username").focus();
+  }
+}
+
+function hideAuthOverlay(username) {
+  document.getElementById("auth-overlay").hidden = true;
+  const logoutBtn = document.getElementById("auth-logout-btn");
+  logoutBtn.hidden = false;
+  logoutBtn.title = `Signed in as ${username} · Click to sign out`;
+}
+
+async function initAuth() {
+  // Setup button
+  document.getElementById("auth-setup-btn").addEventListener("click", async () => {
+    const username = document.getElementById("auth-setup-username").value.trim();
+    const password = document.getElementById("auth-setup-password").value;
+    const password2 = document.getElementById("auth-setup-password2").value;
+    const errEl = document.getElementById("auth-setup-error");
+    errEl.hidden = true;
+    if (!username || !password) { errEl.textContent = "Username and password are required."; errEl.hidden = false; return; }
+    if (password !== password2) { errEl.textContent = "Passwords do not match."; errEl.hidden = false; return; }
+    try {
+      const res = await fetch("/api/auth/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); errEl.textContent = b.detail || "Setup failed."; errEl.hidden = false; return; }
+      const data = await res.json();
+      hideAuthOverlay(data.username);
+      loadLibraries();
+      resumeActiveJobs();
+    } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
+  });
+
+  // Enter key on setup form
+  ["auth-setup-username", "auth-setup-password", "auth-setup-password2"].forEach((id) => {
+    document.getElementById(id).addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("auth-setup-btn").click(); });
+  });
+
+  // Login button
+  document.getElementById("auth-login-btn").addEventListener("click", async () => {
+    const username = document.getElementById("auth-login-username").value.trim();
+    const password = document.getElementById("auth-login-password").value;
+    const errEl = document.getElementById("auth-login-error");
+    errEl.hidden = true;
+    if (!username || !password) { errEl.textContent = "Username and password are required."; errEl.hidden = false; return; }
+    try {
+      const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); errEl.textContent = b.detail || "Login failed."; errEl.hidden = false; return; }
+      const data = await res.json();
+      hideAuthOverlay(data.username);
+      loadLibraries();
+      resumeActiveJobs();
+    } catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
+  });
+
+  // Enter key on login form
+  ["auth-login-username", "auth-login-password"].forEach((id) => {
+    document.getElementById(id).addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("auth-login-btn").click(); });
+  });
+
+  // Logout button
+  document.getElementById("auth-logout-btn").addEventListener("click", async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    document.getElementById("auth-logout-btn").hidden = true;
+    showAuthOverlay(false);
+  });
+
+  // Check current auth status
+  try {
+    const res = await fetch("/api/auth/status");
+    const status = await res.json();
+    if (status.needs_setup) {
+      showAuthOverlay(true);
+    } else if (!status.authenticated) {
+      showAuthOverlay(false);
+    } else {
+      hideAuthOverlay(status.username);
+      loadLibraries();
+      resumeActiveJobs();
+    }
+  } catch (_) {
+    showAuthOverlay(false);
+  }
+}
+
 initTheme();
 initTabs();
 initLibrarySelect();
 initSettingsTab();
-loadLibraries();
-resumeActiveJobs();
+initAuth();

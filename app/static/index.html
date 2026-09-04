@@ -15,6 +15,7 @@
     </nav>
     <button type="button" id="library-refresh-btn" title="Refresh show list">↻ Refresh</button>
     <select id="library-select" aria-label="Library" title="Switch library"></select>
+    <button type="button" id="auth-logout-btn" class="auth-logout-btn" hidden title="Sign out">Sign out</button>
     <label class="theme-switch" title="Toggle dark mode">
       <input type="checkbox" id="theme-toggle">
       <span class="slider"></span>
@@ -210,6 +211,26 @@
       <button type="button" class="danger" id="settings-clear-db">Clear entire backup database</button>
     </section>
   </main>
+  <div id="auth-overlay" hidden>
+    <div class="auth-card">
+      <h1 class="auth-title">Anime MKV Toolkit</h1>
+      <div id="auth-setup-form" hidden>
+        <p class="auth-desc">Create your account to get started.</p>
+        <label class="auth-label">Username<input type="text" id="auth-setup-username" autocomplete="username"></label>
+        <label class="auth-label">Password<input type="password" id="auth-setup-password" autocomplete="new-password"></label>
+        <label class="auth-label">Confirm password<input type="password" id="auth-setup-password2" autocomplete="new-password"></label>
+        <button type="button" id="auth-setup-btn" class="auth-btn">Create account</button>
+        <p class="auth-error" id="auth-setup-error" hidden></p>
+      </div>
+      <div id="auth-login-form" hidden>
+        <p class="auth-desc">Sign in to continue.</p>
+        <label class="auth-label">Username<input type="text" id="auth-login-username" autocomplete="username"></label>
+        <label class="auth-label">Password<input type="password" id="auth-login-password" autocomplete="current-password"></label>
+        <button type="button" id="auth-login-btn" class="auth-btn">Sign in</button>
+        <p class="auth-error" id="auth-login-error" hidden></p>
+      </div>
+    </div>
+  </div>
   <div id="modal-root"></div>
   <div id="task-queue"></div>
   <div id="chapterize-chip" hidden title="Click to return to chapter analysis">
