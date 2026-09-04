@@ -92,123 +92,171 @@
     </section>
   </main>
   <main id="view-settings" style="display:none;">
-    <section class="panel">
-      <h2>Global Scan / Backup / Restore</h2>
-      <p class="item-sub">
-        Scan extracts chapters and mediainfo from disk into the scan database. Backup copies
-        already-scanned data into the separate backup database. Restore writes backed-up
-        chapters back into the MKV files. Runs across every library found under the mounted
-        /libraries path.
-      </p>
-      <div class="settings-actions">
-        <button type="button" id="settings-scan-all">Scan all libraries</button>
-        <button type="button" class="primary" id="settings-backup-all">Backup all libraries</button>
-        <button type="button" id="settings-restore-all">Restore all libraries</button>
+    <section class="settings-group">
+      <div class="settings-group-header">
+        <span class="settings-group-icon">🗂️</span>
+        <div>
+          <h2>General</h2>
+          <p class="settings-group-desc">Library-wide scan, backup, restore, and export.</p>
+        </div>
+      </div>
+      <div class="settings-grid">
+        <div class="settings-card">
+          <h3>Global Scan / Backup / Restore</h3>
+          <p class="item-sub">
+            Scan extracts chapters and mediainfo from disk into the scan database. Backup copies
+            already-scanned data into the separate backup database. Restore writes backed-up
+            chapters back into the MKV files. Runs across every library found under the mounted
+            /libraries path.
+          </p>
+          <div class="settings-actions">
+            <button type="button" id="settings-scan-all">Scan all libraries</button>
+            <button type="button" class="primary" id="settings-backup-all">Backup all libraries</button>
+            <button type="button" id="settings-restore-all">Restore all libraries</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Export</h3>
+          <p class="item-sub">Download the backup database file (backup.db) for safekeeping.</p>
+          <div class="settings-actions">
+            <a class="button-link" id="export-backup-link" href="/api/backup/export" download="backup.db">Export backup database</a>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Cleanup Steps</h2>
-      <p class="item-sub">
-        Turn individual cleanup steps on or off. A disabled step is skipped entirely by both
-        "Clean" and "Dry Run": it contributes no edit and no preview line.
-      </p>
-      <div id="cleanup-steps-list">Loading...</div>
-    </section>
+    <section class="settings-group">
+      <div class="settings-group-header">
+        <span class="settings-group-icon">🧹</span>
+        <div>
+          <h2>Cleanup Rules</h2>
+          <p class="settings-group-desc">What the "Clean" action changes in your MKV files.</p>
+        </div>
+      </div>
+      <div class="settings-grid">
+        <div class="settings-card">
+          <h3>Cleanup Steps</h3>
+          <p class="item-sub">
+            Turn individual cleanup steps on or off. A disabled step is skipped entirely by both
+            "Clean" and "Dry Run": it contributes no edit and no preview line.
+          </p>
+          <div id="cleanup-steps-list">Loading...</div>
+        </div>
 
-    <section class="panel">
-      <h2>Cleanup Default Audio Track</h2>
-      <p class="item-sub">
-        When "Pick one default audio track by language priority" is enabled, exactly one audio
-        track per file is marked default: the highest-priority language below that has a
-        matching audio track. If none match, the first audio track in the file is used instead.
-      </p>
-      <div id="audio-priority-list">Loading...</div>
-      <div class="settings-actions" style="margin-top:0.75rem;">
-        <input type="text" id="new-priority-lang" placeholder="Language code (e.g. fre)">
-        <button type="button" id="add-priority-lang">Add language</button>
+        <div class="settings-card">
+          <h3>Default Audio Track</h3>
+          <p class="item-sub">
+            When "Pick one default audio track by language priority" is enabled, exactly one audio
+            track per file is marked default: the highest-priority language below that has a
+            matching audio track. If none match, the first audio track in the file is used instead.
+          </p>
+          <div id="audio-priority-list">Loading...</div>
+          <div class="settings-actions" style="margin-top:0.75rem;">
+            <input type="text" id="new-priority-lang" placeholder="Language code (e.g. fre)">
+            <button type="button" id="add-priority-lang">Add language</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Audio Codec Names</h3>
+          <p class="item-sub">
+            Display names used when the "Clean" action renames audio tracks. Built-in codec
+            identifiers can't be renamed or removed, but you can change what they're displayed
+            as. Add your own for codecs not listed here.
+          </p>
+          <div id="codec-mapping-table">Loading...</div>
+          <div class="settings-actions" style="margin-top:0.75rem;">
+            <input type="text" id="new-codec-key" placeholder="Codec identifier (e.g. Vorbis)">
+            <input type="text" id="new-codec-name" placeholder="Display name (e.g. Vorbis Audio)">
+            <button type="button" id="add-codec-mapping">Add codec mapping</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Subtitle Naming</h3>
+          <p class="item-sub">Text appended to subtitle track names for forced and commentary tracks.</p>
+          <div class="settings-actions">
+            <label>Forced suffix
+              <input type="text" id="forced-suffix-input">
+            </label>
+            <label>Commentary suffix
+              <input type="text" id="commentary-suffix-input">
+            </label>
+            <button type="button" id="save-subtitle-settings">Save</button>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Cleanup Audio Codec Names</h2>
-      <p class="item-sub">
-        Display names used when the "Clean" action renames audio tracks. Built-in codec
-        identifiers can't be renamed or removed, but you can change what they're displayed
-        as. Add your own for codecs not listed here.
-      </p>
-      <div id="codec-mapping-table">Loading...</div>
-      <div class="settings-actions" style="margin-top:0.75rem;">
-        <input type="text" id="new-codec-key" placeholder="Codec identifier (e.g. Vorbis)">
-        <input type="text" id="new-codec-name" placeholder="Display name (e.g. Vorbis Audio)">
-        <button type="button" id="add-codec-mapping">Add codec mapping</button>
+    <section class="settings-group">
+      <div class="settings-group-header">
+        <span class="settings-group-icon">🎬</span>
+        <div>
+          <h2>Chapter Analyzer</h2>
+          <p class="settings-group-desc">OP/ED detection against animethemes.moe, naming, and its audio cache.</p>
+        </div>
+      </div>
+      <div class="settings-grid">
+        <div class="settings-card">
+          <h3>Naming Schema</h3>
+          <p class="item-sub">
+            Use <code>{n}</code> for the running number within that chapter type (e.g. multiple OP/ED in one
+            episode) and <code>{episode}</code> for the episode number. The Episode chapter itself isn't
+            listed here - its title is always plain "Episode".
+          </p>
+          <div class="form-grid" id="chapterize-naming-form">Loading...</div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Match Settings</h3>
+          <p class="item-sub">
+            Detects Prologue/Opening/Episode/Ending/Epilogue chapters by matching episode audio against
+            animethemes.moe OP/ED songs. Reached via the "Analyze Chapters" button on a season or episode.
+          </p>
+          <label class="field-row">Match confidence threshold
+            <input type="number" id="chapterize-setting-threshold" min="0" max="1" step="0.05">
+          </label>
+          <label class="field-row">animethemes.moe cache TTL (days)
+            <input type="number" id="chapterize-setting-cache-ttl" min="1" step="1">
+          </label>
+          <div class="settings-actions" style="margin-top:0.75rem;">
+            <button type="button" id="chapterize-save-settings-btn">Save</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Theme Audio Cache</h3>
+          <p class="item-sub">
+            Cached animethemes.moe theme audio expires automatically after the TTL above. Use this to force a
+            clean re-download of everything right now (e.g. after a bad match caused by a corrupt download).
+          </p>
+          <div class="settings-actions">
+            <button type="button" class="danger" id="chapterize-clear-cache-btn">Clear cached theme audio</button>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Cleanup Subtitle Naming</h2>
-      <p class="item-sub">Text appended to subtitle track names for forced and commentary tracks.</p>
-      <div class="settings-actions">
-        <label>Forced suffix
-          <input type="text" id="forced-suffix-input">
-        </label>
-        <label>Commentary suffix
-          <input type="text" id="commentary-suffix-input">
-        </label>
-        <button type="button" id="save-subtitle-settings">Save</button>
+    <section class="settings-group">
+      <div class="settings-group-header">
+        <span class="settings-group-icon danger-icon">⚠️</span>
+        <div>
+          <h2>Danger Zone</h2>
+          <p class="settings-group-desc">Irreversible actions. Read twice before clicking.</p>
+        </div>
       </div>
-    </section>
-
-    <section class="panel">
-      <h2>Chapter Analyzer Naming Schema</h2>
-      <p class="item-sub">
-        Use <code>{n}</code> for the running number within that chapter type (e.g. multiple OP/ED in one
-        episode) and <code>{episode}</code> for the episode number. The Episode chapter itself isn't
-        listed here - its title is always plain "Episode".
-      </p>
-      <div class="form-grid" id="chapterize-naming-form">Loading...</div>
-    </section>
-
-    <section class="panel">
-      <h2>Chapter Analyzer</h2>
-      <p class="item-sub">
-        Detects Prologue/Opening/Episode/Ending/Epilogue chapters by matching episode audio against
-        animethemes.moe OP/ED songs. Reached via the "Analyze Chapters" button on a season or episode.
-      </p>
-      <label class="field-row">Match confidence threshold
-        <input type="number" id="chapterize-setting-threshold" min="0" max="1" step="0.05">
-      </label>
-      <label class="field-row">animethemes.moe cache TTL (days)
-        <input type="number" id="chapterize-setting-cache-ttl" min="1" step="1">
-      </label>
-      <div class="settings-actions" style="margin-top:0.75rem;">
-        <button type="button" id="chapterize-save-settings-btn">Save</button>
+      <div class="settings-card danger-card">
+        <h3>Clear Entire Backup Database</h3>
+        <p class="item-sub">
+          Permanently deletes every library, show, episode, chapter, and track metadata record
+          from the <strong>backup database</strong>. The scan database is never touched, and files
+          on disk are never touched.
+        </p>
+        <div class="settings-actions">
+          <button type="button" class="danger" id="settings-clear-db">Clear entire backup database</button>
+        </div>
       </div>
-    </section>
-
-    <section class="panel">
-      <h2>Chapter Analyzer Cache</h2>
-      <p class="item-sub">
-        Cached animethemes.moe theme audio expires automatically after the TTL above. Use this to force a
-        clean re-download of everything right now (e.g. after a bad match caused by a corrupt download).
-      </p>
-      <button type="button" class="danger" id="chapterize-clear-cache-btn">Clear cached theme audio</button>
-    </section>
-
-    <section class="panel">
-      <h2>Export</h2>
-      <p class="item-sub">Download the backup database file (backup.db) for safekeeping.</p>
-      <a class="button-link" id="export-backup-link" href="/api/backup/export" download="backup.db">Export backup database</a>
-    </section>
-
-    <section class="panel">
-      <h2>Danger Zone</h2>
-      <p class="item-sub">
-        Permanently deletes every library, show, episode, chapter, and track metadata record
-        from the <strong>backup database</strong>. The scan database is never touched, and files
-        on disk are never touched.
-      </p>
-      <button type="button" class="danger" id="settings-clear-db">Clear entire backup database</button>
     </section>
   </main>
   <div id="auth-overlay" hidden>
