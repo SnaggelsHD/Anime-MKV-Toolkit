@@ -35,6 +35,7 @@ from app.maintenance import (
     delete_season,
     delete_show,
     export_backup_database,
+    purge_show,
     restore_all,
     scan_all,
 )
@@ -677,6 +678,17 @@ def delete_show_endpoint(show_id: int, db: Session = Depends(get_db), backup_db:
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
     delete_show(backup_db, show)
+    return {"ok": True}
+
+
+@app.delete("/api/shows/{show_id}/purge")
+def purge_show_endpoint(show_id: int, db: Session = Depends(get_db), backup_db: Session = Depends(get_backup_db)):
+    show = db.get(Show, show_id)
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if not show.missing:
+        raise HTTPException(status_code=400, detail="Only missing shows can be purged")
+    purge_show(db, backup_db, show)
     return {"ok": True}
 
 

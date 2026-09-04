@@ -58,6 +58,14 @@ def clear_database(backup_db: Session) -> None:
     logger.warning("Cleared entire backup database")
 
 
+def purge_show(db: Session, backup_db: Session, show: Show) -> None:
+    """Remove this show from both the scan and backup databases entirely."""
+    delete_show(backup_db, show)
+    db.delete(show)
+    db.commit()
+    logger.info("Purged show from scan and backup databases: %s", show.name)
+
+
 def delete_show(backup_db: Session, show: Show) -> None:
     """Remove this show's backup data. The scan database entry is untouched."""
     backup_show = (

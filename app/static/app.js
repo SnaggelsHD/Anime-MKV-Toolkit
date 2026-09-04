@@ -419,6 +419,7 @@ function renderShowsList() {
               <div class="item-sub">${show.episode_count} episode(s) • ${show.scanned_count} scanned • ${show.backed_up_count} backed up • ${show.cleaned_count} cleaned</div>
             </div>
           </div>
+          ${show.missing ? `<button type="button" class="danger show-purge-btn" data-purge-show-id="${show.id}" data-purge-show-name="${escapeHtml(show.name)}" title="Delete completely from scan and backup databases" style="flex-shrink:0;font-size:0.75rem;padding:0.2rem 0.5rem;">Delete</button>` : ""}
         </div>
       </div>`
     )
@@ -443,6 +444,21 @@ function renderShowsList() {
       document.querySelectorAll(".show-item.selected").forEach((row) => row.classList.remove("selected"));
       el.closest(".show-item")?.classList.add("selected");
       renderShowOverview(Number(el.dataset.showId));
+    });
+  });
+  list.querySelectorAll(".show-purge-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const showId = Number(btn.dataset.purgeShowId);
+      const showName = btn.dataset.purgeShowName;
+      if (!confirm(`Permanently delete "${showName}" from both the scan and backup databases?\n\nThis cannot be undone.`)) return;
+      try {
+        await api(`/api/shows/${showId}/purge`, { method: "DELETE" });
+        if (state.detailKind === "show" && state.detailId === showId) resetDetailPanel();
+        await selectLibrary(state.selectedLibraryId);
+      } catch (err) {
+        toast(`Failed to delete: ${err.message}`, "error");
+      }
     });
   });
 }
