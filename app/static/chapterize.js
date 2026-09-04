@@ -322,6 +322,11 @@ function attachToChapterizeJob(jobId) {
 
   if (chapterizeEventSource) chapterizeEventSource.close();
   chapterizeEventSource = new EventSource(`/api/chapterize/analyze/${jobId}/events`);
+
+  // Set to true once a terminal status arrives so the onerror handler
+  // knows not to reconnect (job already finished).
+  let jobDone = false;
+
   chapterizeEventSource.addEventListener("log", (ev) => {
     const entries = JSON.parse(ev.data);
     entries.forEach((e) => appendChapterizeLog(e.message, e.level));
@@ -347,6 +352,7 @@ function attachToChapterizeJob(jobId) {
     );
 
     if (terminal) {
+      jobDone = true;
       chapterizeEventSource.close();
       chapterizeEventSource = null;
       startBtn.disabled = false;
@@ -360,7 +366,21 @@ function attachToChapterizeJob(jobId) {
     }
   });
   chapterizeEventSource.onerror = () => {
-    appendChapterizeLog("Lost connection to progress stream.", "warn");
+    if (jobDone) return;
+    if (chapterizeEventSource && chapterizeEventSource.readyState === EventSource.CLOSED) {
+      // Browser gave up reconnecting; take over and retry manually.
+      chapterizeEventSource = null;
+      appendChapterizeLog("Stream closed - reconnecting in 3s...", "warn");
+      setTimeout(() => {
+        if (chapterizeState.jobId === jobId && !jobDone) {
+          appendChapterizeLog("Reconnecting to analysis stream...");
+          attachToChapterizeJob(jobId);
+        }
+      }, 3000);
+    } else {
+      // readyState === CONNECTING: browser is already auto-retrying.
+      appendChapterizeLog("Connection interrupted - browser retrying...", "warn");
+    }
   };
 }
 
