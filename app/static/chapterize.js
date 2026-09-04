@@ -368,13 +368,26 @@ function attachToChapterizeJob(jobId) {
   chapterizeEventSource.onerror = () => {
     if (jobDone) return;
     if (chapterizeEventSource && chapterizeEventSource.readyState === EventSource.CLOSED) {
-      // Browser gave up reconnecting; take over and retry manually.
+      // Browser gave up reconnecting. Probe the result endpoint first: if the
+      // job is gone (server restart wiped in-memory jobs) stop looping and
+      // report the loss; if it still exists reconnect normally.
       chapterizeEventSource = null;
-      appendChapterizeLog("Stream closed - reconnecting in 3s...", "warn");
-      setTimeout(() => {
-        if (chapterizeState.jobId === jobId && !jobDone) {
+      appendChapterizeLog("Stream closed - checking job status...", "warn");
+      setTimeout(async () => {
+        if (chapterizeState.jobId !== jobId || jobDone) return;
+        try {
+          await api(`/api/chapterize/analyze/${jobId}/result`);
+          // Job still exists; reconnect.
           appendChapterizeLog("Reconnecting to analysis stream...");
           attachToChapterizeJob(jobId);
+        } catch (_) {
+          // Job gone (404) — server likely restarted and lost the in-memory job.
+          appendChapterizeLog("Analysis job lost — the server may have restarted. Please start the analysis again.", "err");
+          startBtn.disabled = false;
+          cancelBtn.hidden = true;
+          chapterizeState.jobId = null;
+          localStorage.removeItem(CHAPTERIZE_LAST_JOB_KEY);
+          deactivateChapterizeChip();
         }
       }, 3000);
     } else {
