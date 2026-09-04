@@ -1,3 +1,4 @@
+import http.cookies
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.backup import backup_episode, backup_library, backup_season, backup_show
 from app.backup_db import BackupSessionLocal, get_backup_db, init_backup_db
@@ -67,25 +69,52 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
         return response
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
-    """Block unauthenticated requests to /api/ routes (except /api/auth/ endpoints)."""
+class AuthMiddleware:
+    """Block unauthenticated requests to /api/ routes (except /api/auth/ endpoints).
 
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        if path.startswith("/api/") and not path.startswith("/api/auth/"):
-            token = request.cookies.get(SESSION_COOKIE, "")
-            auth_db = AuthSessionLocal()
-            try:
-                user = validate_session(auth_db, token)
-            finally:
-                auth_db.close()
-            if user is None:
-                return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
-        return await call_next(request)
+    Implemented as a raw ASGI middleware (not BaseHTTPMiddleware) so that it
+    never wraps the response body — BaseHTTPMiddleware's body-forwarding task
+    is incompatible with long-lived SSE streams and can cause the server to
+    shut down mid-analysis."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path.startswith("/api/") and not path.startswith("/api/auth/"):
+                token = self._extract_cookie(scope, SESSION_COOKIE)
+                auth_db = AuthSessionLocal()
+                try:
+                    user = validate_session(auth_db, token)
+                finally:
+                    auth_db.close()
+                if user is None:
+                    body = json.dumps({"detail": "Not authenticated"}).encode()
+                    await send({"type": "http.response.start", "status": 401,
+                                "headers": [(b"content-type", b"application/json"),
+                                            (b"content-length", str(len(body)).encode())]})
+                    await send({"type": "http.response.body", "body": body})
+                    return
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    def _extract_cookie(scope: Scope, name: str) -> str:
+        for key, value in scope.get("headers", []):
+            if key == b"cookie":
+                jar = http.cookies.SimpleCookie()
+                try:
+                    jar.load(value.decode("latin1"))
+                    if name in jar:
+                        return jar[name].value
+                except Exception:
+                    pass
+        return ""
 
 
 app.add_middleware(NoCacheStaticMiddleware)
-app.add_middleware(AuthMiddleware)
+app.add_middleware(AuthMiddleware)  # raw ASGI — does not wrap response body
 
 app.include_router(chapterize_analyze_router.router, prefix="/api/chapterize/analyze", tags=["chapterize"])
 app.include_router(chapterize_animethemes_router.router, prefix="/api/chapterize/animethemes", tags=["chapterize"])
