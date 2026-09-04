@@ -212,6 +212,16 @@
   </main>
   <div id="modal-root"></div>
   <div id="task-queue"></div>
+  <div id="chapterize-chip" hidden title="Click to return to chapter analysis">
+    <div class="chapterize-chip-header">
+      <span id="chapterize-chip-label">Analyzing...</span>
+      <button type="button" id="chapterize-chip-dismiss" class="task-card-close" aria-label="Dismiss" hidden>×</button>
+    </div>
+    <div class="task-progress-track">
+      <div id="chapterize-chip-fill" class="task-progress-fill" style="width:0%"></div>
+    </div>
+    <div id="chapterize-chip-status" class="task-card-status"></div>
+  </div>
   <script src="/app.js"></script>
   <script src="/chapterize.js"></script>
 </body>

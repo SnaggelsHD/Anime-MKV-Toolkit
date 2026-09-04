@@ -1190,6 +1190,7 @@ function initTabs() {
       // The chapterize screen isn't a tab of its own (it's reached from a
       // season/episode) - clicking a real tab while it's open should leave it.
       document.getElementById("view-chapterize").style.display = "none";
+      if (typeof syncChapterizeChip === "function") syncChapterizeChip();
     });
   });
 }

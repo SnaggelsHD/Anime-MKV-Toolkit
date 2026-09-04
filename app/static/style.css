@@ -931,3 +931,40 @@ pre {
 .chapter-jump-btn.end { border-left: 3px solid var(--muted); }
 .task-card.error .task-card-status { color: var(--danger); }
 
+/* --- Chapterize progress chip ------------------------------------------ */
+/* Floats at the bottom-right when an analysis is running and the user has
+   navigated away from the chapter-analyzer view. Click it to return. */
+
+#chapterize-chip {
+  position: fixed;
+  bottom: 1.3rem;
+  right: 1.2rem;
+  width: 260px;
+  max-width: calc(100vw - 2.4rem);
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  font-size: 0.8rem;
+  z-index: 42;
+  cursor: pointer;
+  user-select: none;
+}
+#chapterize-chip:hover {
+  background: var(--accent-soft);
+}
+.chapterize-chip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+#chapterize-chip-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

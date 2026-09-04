@@ -25,6 +25,45 @@ const chapterizeState = {
 
 let chapterizeEventSource = null;
 
+// ---- Floating progress chip (visible when analysis runs outside the view) ----
+
+// Whether the chip should be shown at all (independent of view visibility).
+let chapterizeChipActive = false;
+
+// Sync chip visibility: show only when active AND not on the chapterize view.
+function syncChapterizeChip() {
+  const chip = document.getElementById("chapterize-chip");
+  const onView = document.getElementById("view-chapterize").style.display !== "none";
+  chip.hidden = !chapterizeChipActive || onView;
+}
+
+function activateChapterizeChip(label, progressPct, statusText, done) {
+  chapterizeChipActive = true;
+  document.getElementById("chapterize-chip-label").textContent = label || "Analyzing...";
+  document.getElementById("chapterize-chip-fill").style.width = `${progressPct ?? 0}%`;
+  document.getElementById("chapterize-chip-status").textContent = statusText || "";
+  document.getElementById("chapterize-chip-dismiss").hidden = !done;
+  syncChapterizeChip();
+}
+
+function deactivateChapterizeChip() {
+  chapterizeChipActive = false;
+  document.getElementById("chapterize-chip").hidden = true;
+}
+
+document.getElementById("chapterize-chip").addEventListener("click", () => {
+  document.getElementById("view-library").style.display = "none";
+  document.getElementById("view-settings").style.display = "none";
+  document.getElementById("view-chapterize").style.display = "";
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+  syncChapterizeChip();
+});
+
+document.getElementById("chapterize-chip-dismiss").addEventListener("click", (e) => {
+  e.stopPropagation();
+  deactivateChapterizeChip();
+});
+
 function fmtTime(seconds) {
   seconds = Math.max(0, seconds || 0);
   const h = Math.floor(seconds / 3600);
@@ -52,6 +91,7 @@ function openChapterizeView(show, episodes) {
     chapterizeEventSource.close();
     chapterizeEventSource = null;
   }
+  deactivateChapterizeChip();
   chapterizeState.show = show;
   chapterizeState.episodes = episodes.slice().sort((a, b) => a.filename.localeCompare(b.filename));
   chapterizeState.episodeNumberOverrides = {};
@@ -95,6 +135,7 @@ function closeChapterizeView() {
   document.getElementById("view-chapterize").style.display = "none";
   document.getElementById("view-library").style.display = "";
   document.querySelector('.tab-btn[data-tab="library"]')?.classList.add("active");
+  syncChapterizeChip();
 }
 
 document.getElementById("chapterize-back").addEventListener("click", closeChapterizeView);
@@ -288,12 +329,23 @@ function attachToChapterizeJob(jobId) {
   chapterizeEventSource.addEventListener("status", (ev) => {
     const status = JSON.parse(ev.data);
     fillEl.style.width = `${status.progress}%`;
-    statusEl.textContent =
+    const statusText =
       status.status === "queued" ? "Queued - waiting for another analysis to finish..." :
       status.status === "cancelled" ? "Cancelled." :
       status.status === "running" ? `Analyzing ${status.season_label || ""}...` : "";
+    statusEl.textContent = statusText;
 
+    const showName = chapterizeState.show ? chapterizeState.show.name : "Chapter analysis";
     const terminal = ["done", "error", "cancelled"].includes(status.status);
+    activateChapterizeChip(
+      terminal
+        ? (status.status === "done" ? `✓ ${showName}` : `${showName} — ${status.status}`)
+        : `Analyzing: ${showName}`,
+      status.progress,
+      terminal ? "Click to view results" : statusText,
+      terminal,
+    );
+
     if (terminal) {
       chapterizeEventSource.close();
       chapterizeEventSource = null;
@@ -336,11 +388,13 @@ async function resumeChapterizeJob() {
       chapterizeState.jobId = jobId;
       resetChapterizeProgressUI();
       appendChapterizeLog("Reconnected to an analysis already in progress.");
+      activateChapterizeChip("Chapter analysis in progress", 0, "Reconnecting...", false);
       attachToChapterizeJob(jobId);
     } else if (data.status === "done" || (data.status === "cancelled" && data.episodes.length)) {
       chapterizeState.jobId = jobId;
       chapterizeState.resultEpisodes = data.episodes;
       renderChapterizeResults();
+      activateChapterizeChip("✓ Chapter analysis complete", 100, "Click to view results", true);
     }
   } catch (err) {
     // Server unreachable or job gone; nothing to resume.
