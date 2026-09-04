@@ -783,6 +783,7 @@ async function saveChapterizeChapters() {
 async function initChapterizeSettings() {
   document.getElementById("chapterize-save-settings-btn").addEventListener("click", saveChapterizeSettingsFromForm);
   document.getElementById("chapterize-clear-cache-btn").addEventListener("click", clearChapterizeThemeCache);
+  document.getElementById("chapterize-clear-preview-cache-btn").addEventListener("click", clearChapterizePreviewCache);
   await loadChapterizeSettings();
 }
 
@@ -839,6 +840,19 @@ async function clearChapterizeThemeCache() {
     toast(`Cleared ${data.removed} cached file(s)`, "ok");
   } catch (err) {
     toast(`Failed to clear cache: ${err.message}`, "error");
+  }
+  btn.disabled = false;
+}
+
+async function clearChapterizePreviewCache() {
+  if (!confirm("Delete all cached episode preview videos? They will be rebuilt the next time you review an episode.")) return;
+  const btn = document.getElementById("chapterize-clear-preview-cache-btn");
+  btn.disabled = true;
+  try {
+    const data = await api("/api/chapterize/analyze/preview-cache", { method: "DELETE" });
+    toast(`Cleared ${data.removed} cached preview(s)`, "ok");
+  } catch (err) {
+    toast(`Failed to clear preview cache: ${err.message}`, "error");
   }
   btn.disabled = false;
 }

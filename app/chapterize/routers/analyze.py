@@ -44,6 +44,12 @@ def preview(episode_id: int, request: Request, db: Session = Depends(get_db)):
     return serve_file_with_ranges(request, preview_path, "video/mp4")
 
 
+@router.delete("/preview-cache")
+def clear_preview_cache():
+    removed = video_preview.clear_cache()
+    return {"removed": removed}
+
+
 class AnalyzeRequest(BaseModel):
     episode_ids: list[int]
     anime_slug: str

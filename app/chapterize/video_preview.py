@@ -93,3 +93,14 @@ def get_or_build_preview(mkv_path: Path, audio_index: int | None) -> Path:
 
     tmp_path.rename(out_path)
     return out_path
+
+
+def clear_cache() -> int:
+    """Delete every cached preview mp4, regardless of age. Returns files removed."""
+    if not PREVIEW_DIR.exists():
+        return 0
+    removed = 0
+    for f in PREVIEW_DIR.glob("*.mp4"):
+        f.unlink()
+        removed += 1
+    return removed
