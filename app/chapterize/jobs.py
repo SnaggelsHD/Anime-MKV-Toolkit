@@ -185,6 +185,7 @@ def _run_job_locked(job: Job, anime_slug: str, theme_slugs: list[str], mode: str
                 path = asyncio.run(animethemes.download_and_cache_theme(anime_slug, theme, log=job.log))
                 y = audio_match.load_mono(path)
                 chroma = audio_match.chroma_features(y)
+                del y
                 theme_chroma[slug] = (chroma, theme.type, theme.song_title)
             except Exception as e:
                 job.log(f"Could not prepare theme {slug}: {e}", level="err")
@@ -246,6 +247,7 @@ def _run_job_locked(job: Job, anime_slug: str, theme_slugs: list[str], mode: str
                 try:
                     ep_audio = audio_match.load_mono(tmp_wav)
                     ep_chroma = audio_match.chroma_features(ep_audio)
+                    del ep_audio
                 finally:
                     tmp_wav.unlink(missing_ok=True)
 

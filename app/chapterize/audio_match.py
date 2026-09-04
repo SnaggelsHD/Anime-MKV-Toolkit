@@ -12,8 +12,8 @@ from pathlib import Path
 import numpy as np
 from scipy.signal import correlate
 
-SR = 22050
-HOP_LENGTH = 1024
+SR = 11025
+HOP_LENGTH = 512
 
 # Common ways releases tag the Japanese audio track.
 _JAPANESE_LANGUAGE_CODES = {"jpn", "ja", "jp", "japanese"}
@@ -120,10 +120,10 @@ def chroma_features(y: np.ndarray) -> np.ndarray:
     Avoids depending on librosa's chroma_cqt (slow for long episodes)."""
     import librosa
 
-    chroma = librosa.feature.chroma_stft(y=y, sr=SR, hop_length=HOP_LENGTH, n_fft=4096)
+    chroma = librosa.feature.chroma_stft(y=y, sr=SR, hop_length=HOP_LENGTH, n_fft=2048)
     norms = np.linalg.norm(chroma, axis=0, keepdims=True)
     norms[norms == 0] = 1.0
-    return chroma / norms
+    return (chroma / norms).astype(np.float32)
 
 
 @dataclass
