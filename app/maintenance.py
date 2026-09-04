@@ -58,6 +58,17 @@ def clear_database(backup_db: Session) -> None:
     logger.warning("Cleared entire backup database")
 
 
+def purge_library(db: Session, backup_db: Session, library: Library) -> None:
+    """Remove a library and all its shows/episodes from both databases."""
+    backup_lib = backup_db.query(BackupLibrary).filter(BackupLibrary.name == library.name).first()
+    if backup_lib is not None:
+        backup_db.delete(backup_lib)
+        backup_db.commit()
+    db.delete(library)
+    db.commit()
+    logger.info("Purged library from scan and backup databases: %s", library.name)
+
+
 def purge_show(db: Session, backup_db: Session, show: Show) -> None:
     """Remove this show from both the scan and backup databases entirely."""
     delete_show(backup_db, show)

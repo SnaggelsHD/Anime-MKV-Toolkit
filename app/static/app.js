@@ -317,6 +317,7 @@ function renderLibrarySummary() {
         </div>
       </div>
       <div class="item-actions">
+        ${lib.missing ? `<button type="button" class="danger" data-action="purge-library" title="Delete completely from scan and backup databases" style="font-size:0.75rem;padding:0.2rem 0.5rem;">Delete</button>` : ""}
         <div class="menu-wrap">
           <button type="button" class="menu-toggle" data-action="toggle-menu" aria-label="Actions" title="Actions">☰</button>
           <div class="menu-dropdown" hidden>
@@ -372,6 +373,19 @@ function renderLibrarySummary() {
     renderLibrarySummary();
     renderShowsList();
   });
+  if (lib.missing) {
+    container.querySelector('[data-action="purge-library"]').addEventListener("click", async () => {
+      if (!confirm(`Permanently delete library "${lib.name}" and all its shows from both the scan and backup databases?\n\nThis cannot be undone.`)) return;
+      try {
+        await api(`/api/libraries/${lib.id}/purge`, { method: "DELETE" });
+        state.selectedLibraryId = null;
+        resetDetailPanel();
+        await loadLibraries();
+      } catch (err) {
+        toast(`Failed to delete library: ${err.message}`, "error");
+      }
+    });
+  }
   wireMenus(container);
 }
 

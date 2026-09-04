@@ -41,6 +41,7 @@ from app.maintenance import (
     delete_season,
     delete_show,
     export_backup_database,
+    purge_library,
     purge_show,
     restore_all,
     scan_all,
@@ -783,6 +784,17 @@ def delete_show_endpoint(show_id: int, db: Session = Depends(get_db), backup_db:
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
     delete_show(backup_db, show)
+    return {"ok": True}
+
+
+@app.delete("/api/libraries/{library_id}/purge")
+def purge_library_endpoint(library_id: int, db: Session = Depends(get_db), backup_db: Session = Depends(get_backup_db)):
+    library = db.get(Library, library_id)
+    if library is None:
+        raise HTTPException(status_code=404, detail="Library not found")
+    if not library.missing:
+        raise HTTPException(status_code=400, detail="Only missing libraries can be purged")
+    purge_library(db, backup_db, library)
     return {"ok": True}
 
 
