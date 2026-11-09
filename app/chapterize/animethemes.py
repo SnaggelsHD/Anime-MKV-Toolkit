@@ -1,12 +1,8 @@
 """Client for animethemes.moe: search anime, list OP/ED themes, and cache
 their theme audio locally so it can be matched against episode audio.
 
-The AnimeThemes API is a JSON:API variant that wraps top-level resources
-under a key named after the resource (e.g. {"anime": [...]}) rather than
-the standard "data" key, and single-resource responses use the singular
-form (e.g. {"anime": {...}}). Responses are parsed defensively (falling
-back to "data") since this client can't be exercised against the live API
-from this sandbox (its domains are not reachable here).
+Uses the AnimeThemes GraphQL API (the old JSON:API at api.animethemes.moe
+is deprecated/removed).
 """
 import json
 import logging
@@ -22,7 +18,7 @@ from app.chapterize.db import load_settings
 
 logger = logging.getLogger("chapterize.animethemes")
 
-API_BASE = "https://api.animethemes.moe"
+GRAPHQL_URL = "https://graphql.animethemes.moe/"
 AUDIO_HOST = "https://a.animethemes.moe"
 VIDEO_HOST = "https://v.animethemes.moe"
 
@@ -105,8 +101,14 @@ class AnimeResult:
 class ThemeVideo:
     basename: str
     audio_basename: str | None
+    video_link: str | None = None
+    audio_link: str | None = None
 
     def audio_url(self) -> str:
+        if self.audio_link:
+            return self.audio_link
+        if self.video_link:
+            return self.video_link
         if self.audio_basename:
             return f"{AUDIO_HOST}/{self.audio_basename}"
         return f"{VIDEO_HOST}/{self.basename}"
@@ -143,28 +145,53 @@ class Theme:
         }
 
 
+async def _graphql(query: str, variables: dict) -> dict:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(GRAPHQL_URL, json={"query": query, "variables": variables})
+        resp.raise_for_status()
+        payload = resp.json()
+    if payload.get("errors"):
+        raise RuntimeError(f"AnimeThemes GraphQL error: {payload['errors'][0].get('message')}")
+    return payload.get("data") or {}
+
+
+_SEARCH_QUERY = """
+query($q: String!, $first: Int!) {
+  search(search: $q, first: $first) {
+    anime { id slug year season title { romaji english native } }
+  }
+}
+"""
+
+_THEMES_QUERY = """
+query($slug: String!) {
+  anime(slug: $slug) {
+    animethemes {
+      id slug type sequence
+      song { title { romaji native } }
+      animethemeentries {
+        episodes
+        videos { nodes { basename link audio { basename link } } }
+      }
+    }
+  }
+}
+"""
+
+
 async def search_anime(query: str, limit: int = 12) -> list[AnimeResult]:
-    """Uses the global /search endpoint (built for free-text lookup) rather
-    than filtering the /anime index: it takes a plain query string instead
-    of a filter/sort combination that has to match the API's validation
-    exactly, and ranks by relevance instead of alphabetically."""
     query = query.strip()
     if not query:
         return []
-    params = {"q": query, "page[limit]": str(limit)}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(f"{API_BASE}/search", params=params)
-        resp.raise_for_status()
-        payload = resp.json()
-
-    search_results = _unwrap_obj(payload, "search")
-    items = search_results.get("anime") or _unwrap_list(payload, "anime")
+    data = await _graphql(_SEARCH_QUERY, {"q": query, "first": limit})
+    items = (data.get("search") or {}).get("anime") or []
     results = []
     for item in items:
+        title = item.get("title") or {}
         results.append(
             AnimeResult(
                 id=item.get("id"),
-                name=item.get("name", "?"),
+                name=title.get("romaji") or title.get("english") or title.get("native") or "?",
                 slug=item.get("slug", ""),
                 year=item.get("year"),
                 season=item.get("season"),
@@ -174,36 +201,36 @@ async def search_anime(query: str, limit: int = 12) -> list[AnimeResult]:
 
 
 async def get_themes(anime_slug: str) -> list[Theme]:
-    params = {"include": "animethemes.song,animethemes.animethemeentries.videos.audio"}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(f"{API_BASE}/anime/{anime_slug}", params=params)
-        resp.raise_for_status()
-        payload = resp.json()
-
-    anime = _unwrap_obj(payload, "anime")
-    raw_themes = anime.get("animethemes", []) or []
+    data = await _graphql(_THEMES_QUERY, {"slug": anime_slug})
+    anime = data.get("anime") or {}
+    raw_themes = anime.get("animethemes") or []
 
     themes = []
     for rt in raw_themes:
-        song = rt.get("song") or {}
-        entries = rt.get("animethemeentries", []) or []
+        song_title = ((rt.get("song") or {}).get("title") or {})
+        entries = rt.get("animethemeentries") or []
         video = None
         episode_ranges: list[tuple[int, int]] = []
         for entry in entries:
             episode_ranges.extend(parse_episode_ranges(entry.get("episodes")))
             if video is None:
-                videos = entry.get("videos", []) or []
-                if videos:
-                    v = videos[0]
+                nodes = (entry.get("videos") or {}).get("nodes") or []
+                if nodes:
+                    v = nodes[0]
                     audio = v.get("audio") or {}
-                    video = ThemeVideo(basename=v.get("basename", ""), audio_basename=audio.get("basename"))
+                    video = ThemeVideo(
+                        basename=v.get("basename", ""),
+                        audio_basename=audio.get("basename"),
+                        video_link=v.get("link"),
+                        audio_link=audio.get("link"),
+                    )
         themes.append(
             Theme(
                 id=rt.get("id"),
                 slug=rt.get("slug", ""),
                 type=rt.get("type", "OP"),
                 sequence=rt.get("sequence"),
-                song_title=song.get("title"),
+                song_title=song_title.get("romaji") or song_title.get("native"),
                 episode_ranges=episode_ranges,
                 video=video,
             )
